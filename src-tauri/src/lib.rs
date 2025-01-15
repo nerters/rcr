@@ -1,6 +1,6 @@
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-    TitleBarStyle, WebviewUrl, WebviewWindowBuilder,
+    WebviewUrl, WebviewWindowBuilder,
 };
 
 pub mod serve;
@@ -67,6 +67,8 @@ pub fn run() {
                 .inner_size(800.0, 600.0);
 
             // 仅在 macOS 时设置透明标题栏
+            #[cfg(target_os = "macos")]
+            use tauri::TitleBarStyle;
             #[cfg(target_os = "macos")]
             let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);
 

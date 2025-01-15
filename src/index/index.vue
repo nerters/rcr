@@ -521,7 +521,6 @@ background: #a1a6a7;
 
 .image-uploader {
   position: relative;
-  width: 100%;
   height: 20px;
   border: 2px dashed #ccc;
   border-radius: 8px;
