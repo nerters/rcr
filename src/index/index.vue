@@ -25,6 +25,9 @@ onBeforeMount(async () => {
         cache_link.value = [];
     }
     upTreeVer();
+
+
+    await invoke("pubsub")
 })
 
 function upTreeVer() {

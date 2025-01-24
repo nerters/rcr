@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::utils::{self, redis_util::Key, response::R};
+use crate::utils::{self, redis_util::{zzz, Key}, response::R};
 
 //let redis_uri = "redis://192.168.5.126:6379/1";
 //let redis_uri_v1 = "redis://:123123@192.168.4.49:6379/0";
@@ -19,4 +19,10 @@ pub fn get_value(redis_uri: String, key: String, db: String) -> R<String> {
 pub fn get_db_num(redis_uri: String) -> R<HashMap<usize, usize>> {
     log::info!("查询数据库中的db库数量：");
     utils::redis_util::get_all_db_num(redis_uri)
+}
+
+
+#[tauri::command]
+pub async fn pubsub() {
+    zzz().await;
 }

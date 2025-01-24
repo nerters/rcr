@@ -1,8 +1,10 @@
+use async_std::task::block_on;
 use cached::proc_macro::{cached, once};
 use cached::SizedCache;
 use crypto::{digest::Digest, md5::Md5};
 use r2d2::Pool;
-use redis::{Client, Commands, Msg, PubSub};
+use redis::cluster::ClusterClient;
+use redis::{AsyncCommands, Client, Commands, Msg, PubSub};
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use std::thread::sleep;
@@ -395,32 +397,120 @@ pub fn get_client_cache(redis_uri: String) -> Option<Pool<Client>> {
     }
 }
 
-#[test]
-pub fn test() {
+#[tokio::main]
+pub async fn ttt() {
+    //let redis_uri = "redis://192.168.4.49:6379/0?protocol=resp3";
     let redis_uri = "redis://192.168.4.49:6379/0";
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        let client = redis::Client::open(redis_uri).unwrap();
-        let mut con = client.get_connection().unwrap();
+    let client = redis::Client::open(redis_uri).unwrap();
 
-        // 订阅所有键的变化
-        let mut pubsub: PubSub = con.as_pubsub();
-        pubsub.subscribe("__keyspace@0__:*").unwrap();
+    let mut con = client.get_connection().unwrap();
+    let _: () = con.set("!111".to_string(), "2222".to_string()).unwrap();
 
-        // 持续监听并处理事件
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
+    match client.get_multiplexed_async_connection_with_config(&config).await {
+        Ok(mut conn) => {
+            println!("-------------------2");
+            conn.subscribe("__keyspace@0__:set").await.unwrap();
+            conn.subscribe("__keyspace@0__:del").await.unwrap();
+            println!("-------------------3");
+            // 持续监听并处理事件
+            loop {
+                println!("Received {:?}", rx.recv().await.unwrap());
+              }
+        },
+        Err(e) => {
+            log::error!("打开redis链接失败！{}", e);
+        },
+    }
+}
+
+
+use async_std::stream::StreamExt; // 或者
+
+
+use log::info;
+
+pub async fn zzz() {
+    let client: Client = Client::open("redis://192.168.4.49:6379/0").unwrap();
+    info!("Connecting to Redis...");
+
+    let mut pubsub_conn = client.get_async_pubsub().await.unwrap();
+    info!("Subscribed to Redis Pub/Sub");
+
+    // 订阅键空间事件和其他频道
+    let _: () = pubsub_conn.subscribe(&[
+        "phonewave", 
+        "foo", 
+        "bar", 
+        "__keyevent@0__:del", 
+        "__keyevent@0__:set"
+    ])
+    .await.unwrap();
+    info!("Subscribed to keyspace events.");
+
+    // 启动异步任务监听事件
+    let _handle = tokio::spawn(async move {
+        let mut pubsub_stream = pubsub_conn.on_message();
         loop {
-            let msg = pubsub.get_message().unwrap();
-            let payload: String = msg.get_payload().unwrap();
-            println!("Received keyspace notification: {}", payload);
-
-            // 根据收到的消息内容处理
-            if payload.contains("set") {
-                println!("Key was set or updated.");
-            } else if payload.contains("del") {
-                println!("Key was deleted.");
-            } else if payload.contains("expired") {
-                println!("Key expired.");
+          
+            match pubsub_stream.next().await {
+                Some(temp) => {
+                    let message: String = temp.get_payload().unwrap();
+                    info!("Received message: {}", message);
+                },
+                None => {
+                    info!("No messages received.");
+                    // 可以适当延迟，避免空循环
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                },
             }
         }
     });
+
+    // 发布测试消息
+    let mut publish_conn = client.get_multiplexed_async_connection().await.unwrap();
+    let _: () = publish_conn.publish("foo", "foobar").await.unwrap();
+    info!("Published message to foo channel.");
+    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;  // 保持程序运行
+    // 模拟 Redis 中的键事件
+    let _: () = publish_conn.set("test_key", "test_value").await.unwrap();
+    info!("Inserted test_key in Redis.");
+
+
+}
+
+
+
+#[test]
+pub fn test() {
+    println!("-------------------00");
+    let redis_uri = "redis://192.168.4.49:6379/0";
+
+    println!("-------------------0");
+    let client = redis::Client::open(redis_uri).unwrap();
+    let mut con = client.get_connection().unwrap();
+    println!("-------------------1");
+    // 订阅所有键的变化
+    let mut pubsub = con.as_pubsub();
+    println!("-------------------2");
+    pubsub.subscribe("__keyspace@0__:set").expect("1234");
+    pubsub.subscribe("__keyspace@0__:del").expect("qwer");
+    println!("-------------------3");
+    // 持续监听并处理事件
+    loop {
+        println!("9");
+        let msg = pubsub.get_message().unwrap();
+        let payload: String = msg.get_payload().unwrap();
+        println!("Received keyspace notification: {}", payload);
+
+        // 根据收到的消息内容处理
+        if payload.contains("set") {
+            println!("Key was set or updated.");
+        } else if payload.contains("del") {
+            println!("Key was deleted.");
+        } else if payload.contains("expired") {
+            println!("Key expired.");
+        }
+    }
 }

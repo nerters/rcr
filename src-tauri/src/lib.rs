@@ -2,6 +2,7 @@ use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     WebviewUrl, WebviewWindowBuilder,
 };
+use utils::redis_util::{ttt, zzz};
 
 pub mod serve;
 pub mod utils;
@@ -15,6 +16,9 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     utils::creat_folder::creat_base_folder();
+
+    //ttt();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
@@ -108,6 +112,7 @@ pub fn run() {
             serve::redis_serve::get_keys,
             serve::redis_serve::get_value,
             serve::redis_serve::get_db_num,
+            serve::redis_serve::pubsub,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
