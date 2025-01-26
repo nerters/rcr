@@ -18,7 +18,10 @@ import { aliases, mdi } from 'vuetify/iconsets/mdi'
 
 
 const vuetify = createVuetify({
-    components,
+    components: {
+        ...components,
+        VTreeview // Add VTreeview to your components
+    },
     directives,
     icons: {
         defaultSet: 'mdi',

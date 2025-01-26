@@ -27,17 +27,19 @@ pub fn run() {
             Menu::with_items(
                 handle,
                 &[
+                    #[cfg(target_os = "macos")]
                     &Submenu::with_items(
                         handle,
                         "rcr",
                         true,
                         &[
                             &MenuItem::new(handle, "关于", true, None::<&str>)?,
-                            #[cfg(target_os = "macos")]
+                           
                             &MenuItem::new(handle, "你好", true, None::<&str>)?,
                             &PredefinedMenuItem::close_window(handle, Some("退出"))?,
                         ],
                     )?,
+                    #[cfg(target_os = "macos")]
                     &Submenu::with_items(
                         handle,
                         "文件",
@@ -65,10 +67,12 @@ pub fn run() {
                 )?],
             )?;
 
-            let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                .menu(menu)
-                .title("Transparent Titlebar Window")
-                .inner_size(800.0, 600.0);
+            let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default());
+
+            let win_builder = win_builder.title("rcr");
+            let win_builder = win_builder.inner_size(800.0, 600.0);
+            #[cfg(target_os = "macos")]
+            let win_builder = win_builder.menu(menu);
 
             // 仅在 macOS 时设置透明标题栏
             #[cfg(target_os = "macos")]

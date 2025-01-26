@@ -1,13 +1,10 @@
-use async_std::task::block_on;
-use cached::proc_macro::{cached, once};
+use cached::proc_macro::cached;
 use cached::SizedCache;
 use crypto::{digest::Digest, md5::Md5};
+use encoding_rs::{UTF_8, WINDOWS_1252};
 use r2d2::Pool;
-use redis::cluster::ClusterClient;
-use redis::{AsyncCommands, Client, Commands, Msg, PubSub};
+use redis::{AsyncCommands, Client, Commands};
 use serde::{Deserialize, Serialize};
-use tokio::runtime::Runtime;
-use std::thread::sleep;
 use std::{
     collections::{HashMap, HashSet},
     thread,
@@ -23,6 +20,7 @@ pub struct Key {
     pub nname: Option<String>,
     pub name: Option<String>,
     pub leaf: Option<bool>,
+    pub children: Option<Vec<String>>,
     pub redis_uri: Option<String>,
     pub db: Option<String>,
 }
@@ -48,6 +46,7 @@ pub fn get_key_from_cache(
                         nname: Some(i.to_string()),
                         name: Some(i.replace(&key, "")),
                         leaf: Some(false),
+                        children: Some(vec![]),
                         redis_uri: Some(redis_uri.clone()),
                         db: Some(db.clone()),
                     });
@@ -56,6 +55,7 @@ pub fn get_key_from_cache(
                         nname: Some(i.to_string()),
                         name: Some(i.to_string()),
                         leaf: Some(true),
+                        children: None,
                         redis_uri: Some(redis_uri.clone()),
                         db: Some(db.clone()),
                     });
@@ -173,6 +173,7 @@ pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
                     nname: Some(i.to_string()),
                     name: Some(i.replace(&key, "")),
                     leaf: Some(false),
+                    children: Some(vec![]),
                     redis_uri: Some(redis_uri.clone()),
                     db: Some(db.clone()),
                 });
@@ -181,6 +182,7 @@ pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
                     nname: Some(i.to_string()),
                     name: Some(i.replace(&key, "")),
                     leaf: Some(true),
+                    children: None,
                     redis_uri: Some(redis_uri.clone()),
                     db: Some(db.clone()),
                 });
@@ -219,11 +221,31 @@ pub fn get_value(redis_uri: String, key: String, db: String) -> R<String> {
                 .unwrap();
         }
         log::info!("查询key： {}", r_key);
-        let rest: Result<String, redis::RedisError> = connection.get(r_key.clone());
+        let rest: Result<Vec<u8>, redis::RedisError> = connection.get(r_key.clone());
         match rest {
             Ok(rest) => {
-                log::info!("返回值： {}", rest);
-                return R::data(Some(rest));
+               
+                // 尝试不同的编码
+                let (decoded, _, _) = UTF_8.decode(&rest);
+                if !decoded.is_empty() {
+                    log::info!("返回值： {:?}", decoded);
+                    return R::data(Some(decoded.into()));
+                }
+
+                let (decoded, _, _) = WINDOWS_1252.decode(&rest);
+                if !decoded.is_empty() {
+                    log::info!("返回值： {:?}", decoded);
+                    
+                    return R::data(Some(decoded.into()));
+                }
+
+                let (decoded, _, _) = WINDOWS_1252.decode(&rest);
+                if !decoded.is_empty() {
+                    log::info!("返回值： {:?}", decoded);
+                    return R::data(Some(decoded.into()));
+                }
+                log::info!("返回值： {:?}", rest);
+                return R::fail(format!("返回值解析失败！"));
             }
             Err(e) => {
                 log::error!("{:?}", e);

@@ -22,7 +22,7 @@ tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-redis = { version = "0.28.1", features = ["r2d2", "cluster", "async-std-comp"] }
+redis = { version = "0.28.2", features = ["r2d2", "cluster", "async-std-comp"] }
 tokio = { version = "1.40.0", features = ["full"] }
 cached = "0.54.0"
 env_logger = "0.11.5"
@@ -38,6 +38,7 @@ directories = "5.0.1"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 async-std = "1.13.0"
+encoding_rs = "0.8.35"
 
 
 
