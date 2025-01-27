@@ -302,21 +302,17 @@ function updateLink(node: any, data: any) {
 
 //删除
 async function removeLink(node: any, data: any) {
-// Do you have permission to send a notification?
-let permissionGranted = await isPermissionGranted();
-
-// If not we need to request it
-if (!permissionGranted) {
-  const permission = await requestPermission();
-  permissionGranted = permission === 'granted';
-}
-
-// Once permission has been granted we can send the notification
-if (permissionGranted) {
-  sendNotification({ title: 'Tauri', body: 'Tauri is awesome!' });
-}
-
-
+    // Do you have permission to send a notification?
+    let permissionGranted = await isPermissionGranted();
+    // If not we need to request it
+    if (!permissionGranted) {
+        const permission = await requestPermission();
+        permissionGranted = permission === 'granted';
+    }
+    // Once permission has been granted we can send the notification
+    if (permissionGranted) {
+        sendNotification({ title: 'Tauri', body: 'Tauri is awesome!' });
+    }
     const answer = await ask("是否删除 【" + data.name + "】", {
         title:"提示",
         kind: "warning"

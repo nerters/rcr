@@ -5,6 +5,7 @@ use encoding_rs::{UTF_8, WINDOWS_1252};
 use r2d2::Pool;
 use redis::{AsyncCommands, Client, Commands};
 use serde::{Deserialize, Serialize};
+use url::Url;
 use std::{
     collections::{HashMap, HashSet},
     thread,
@@ -389,35 +390,150 @@ pub fn get_client(redis_uri: String) -> Option<Pool<Client>> {
 }
 
 //#[once(option = true, time = 600)]
-#[cached(
-    ty = "SizedCache<String, Option<Pool<Client>>>",
-    create = "{ SizedCache::with_size(100) }",
-    convert = r#"{ format!("{}", redis_uri) }"#
-)]
+// #[cached(
+//     ty = "SizedCache<String, Option<Pool<Client>>>",
+//     create = "{ SizedCache::with_size(100) }",
+//     convert = r#"{ format!("{}", redis_uri) }"#
+// )]
 pub fn get_client_cache(redis_uri: String) -> Option<Pool<Client>> {
     log::info!("redis地址：{}", redis_uri);
+    let url = get_sourc_url(redis_uri.clone());
+    let opool: Option<Pool<Client>> = cache_util::get_cache(&url);
+    match opool {
+        Some(_) => {
+            return opool;
+        },
+        None => {
+            log::info!("缓存中获取为空！获取新链接！");
+        },
+    };
+
     let client = redis::Client::open(redis_uri);
     match client {
-        Ok(client) => {
+        Ok(mut client) => {
+
+            // 查询配置的数据库数量
+            let config:Result<Vec<String>, redis::RedisError>  = redis::cmd("CONFIG")
+                .arg("GET")
+                .arg("databases")
+                .query(&mut client);
+            match config {
+                Ok(config) => {
+                    let total_databases: Option<usize> = config
+                    .get(1) // 第一个值是 "databases"，第二个值是数量
+                    .and_then(|s| s.parse().ok()); // 默认 16
+                    match total_databases {
+                        Some(tootal) => {
+                            cache_util::set_cache(url.clone() + "_total_databases", tootal);
+                        },
+                        None => {
+                            log::error!("链接redis失败！");
+                            return None;
+                        },
+                    }
+                },
+                Err(e) => {
+                    log::error!("链接redis失败：{}", e);
+                    return None;
+                },
+            }
+
+
+
+
             let pool = r2d2::Pool::builder()
                 .connection_timeout(Duration::from_secs(1))
                 .build(client);
             match pool {
                 Ok(pool) => {
+                    cache_util::set_cache(url, pool.clone());
                     return Some(pool);
                 }
                 Err(e) => {
-                    log::error!("打开redis链接失败！{}", e);
+                    log::error!("链接redis失败！{}", e);
                     return None;
                 }
             }
         }
         Err(e) => {
-            log::error!("打开redis链接失败！{}", e);
+            log::error!("链接redis失败：{}", e);
             return None;
         }
     }
 }
+
+
+
+pub fn reset_client_cache(redis_uri: String) -> R<String> {
+    log::info!("redis地址：{}", redis_uri);
+    let url = get_sourc_url(redis_uri.clone());
+    let client = redis::Client::open(redis_uri);
+    match client {
+        Ok(mut client) => {
+            // 查询配置的数据库数量
+            let config:Result<Vec<String>, redis::RedisError>  = redis::cmd("CONFIG")
+                .arg("GET")
+                .arg("databases")
+                .query(&mut client);
+            match config {
+                Ok(config) => {
+                    let total_databases: Option<usize> = config
+                    .get(1) // 第一个值是 "databases"，第二个值是数量
+                    .and_then(|s| s.parse().ok()); // 默认 16
+                    match total_databases {
+                        Some(tootal) => {
+                            cache_util::set_cache(url.clone() + "_total_databases", tootal);
+                        },
+                        None => {
+                            log::error!("链接redis失败！");
+                            return R::fail("链接redis失败！".to_owned());
+                        },
+                    }
+                },
+                Err(e) => {
+                    log::error!("链接redis失败：{}", e);
+                    return R::fail("链接redis失败！".to_owned());
+                },
+            }
+
+
+            let pool = r2d2::Pool::builder()
+                .connection_timeout(Duration::from_secs(1))
+                .build(client);
+            match pool {
+                Ok(pool) => {
+                    cache_util::set_cache(url, pool);
+                    return R::success();
+                }
+                Err(e) => {
+                    log::error!("链接redis失败：{}", e);
+                    return R::fail("链接redis失败！".to_owned());
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("链接redis失败：{}", e);
+            return R::fail("链接redis失败！".to_owned());
+        }
+    }
+}
+
+
+
+pub fn get_sourc_url(redis_uri: String) -> String {
+    if let Ok(mut parsed_url) = Url::parse(&redis_uri) {
+        parsed_url.set_username("").unwrap();  // 清除用户名
+        parsed_url.set_password(None).unwrap(); // 清除密码
+        log::info!("处理后的地址：{}", parsed_url.to_string());
+        return parsed_url.to_string();
+    } else {
+        log::info!("解析失败，返回原始 URL");// 如果解析失败，返回原始 URL
+    }
+    log::info!("处理后的地址：{}", redis_uri);
+    redis_uri
+}
+
+
 
 #[tokio::main]
 pub async fn ttt() {
@@ -453,7 +569,40 @@ use async_std::stream::StreamExt; // 或者
 
 use log::info;
 
-pub async fn zzz() {
+
+pub async fn pubsub_v2(redis_uri: String) {
+    // let pool = get_client(redis_uri).unwrap();
+
+    // let mut connection = pool.get().unwrap();
+    // let mut pubsub_conn = connection.as_pubsub();
+
+    // pubsub_conn.subscribe(&[
+    //     "phonewave", 
+    //     "foo", 
+    //     "bar", 
+    //     "__keyevent@0__:del", 
+    //     "__keyevent@0__:set"
+    // ]);
+
+    // // 启动异步任务监听事件
+    // let _handle = tokio::spawn(async move {
+    //     let pubsub_stream = pubsub_conn.get_message();
+    //     loop {
+    //         match pubsub_stream {
+    //             Ok(ref msg) => {
+    //                 let payload: String = msg.get_payload().unwrap();
+    //                 log::info!("{:?}", payload);
+    //             },
+    //             Err(ref e) => {
+    //                 log::error!("获取信息失败！{}", e);
+    //                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    //             },
+    //         }
+    //     }
+    // });
+}
+
+pub async fn pubsub(redis_uri: String) {
     let client: Client = Client::open("redis://192.168.4.49:6379/0").unwrap();
     info!("Connecting to Redis...");
 
@@ -471,7 +620,7 @@ pub async fn zzz() {
     .await.unwrap();
     info!("Subscribed to keyspace events.");
 
-    // 启动异步任务监听事件
+    //启动异步任务监听事件
     let _handle = tokio::spawn(async move {
         let mut pubsub_stream = pubsub_conn.on_message();
         loop {
@@ -484,7 +633,7 @@ pub async fn zzz() {
                 None => {
                     info!("No messages received.");
                     // 可以适当延迟，避免空循环
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 },
             }
         }

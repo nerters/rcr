@@ -5,7 +5,6 @@
         :width="drawerWidth"
         floating
         permanent
-        class="drawer-left"
       >
 
       <div class="image-uploader" :class="{ 'hovered': isHovered }" @mouseover="handleMouseOver" @mouseleave="handleMouseLeave" @click="addListFun">
@@ -16,7 +15,7 @@
 
       <v-expansion-panels>
         <v-expansion-panel v-for="(link, i) in cache_link">
-          <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="bg-primary position-sticky top-0 pa-3 mt-2 opacity-100" style="z-index: 20;">
+          <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="bg-primary position-sticky top-0 pa-3 mt-2" style="z-index: 20;">
             <v-row no-gutters>
               <v-col class="d-flex justify-start" cols="8">
                 {{ link.name }}
@@ -33,7 +32,12 @@
                   >
                     {{  }}
                   </span>
-                
+                  <div key="1" style="margin-top: -4px;">
+                    <v-icon @click.stop="upLinkFun(link)" icon="mdi-cog" />
+                    <v-icon @click.stop="delLinkFun(link)" icon="mdi-trash-can" />
+                  </div>
+                 
+               
                 </v-fade-transition>
               </v-col>
             </v-row>
@@ -70,8 +74,7 @@
       </v-navigation-drawer>
   
   
-      <v-divider :thickness="5" vertical class="resizer" :style="{ 'padding-left': drawerWidth + 'px' }"
-      @mousedown="onMouseDown"></v-divider>
+      <v-divider :thickness="8" vertical class="resizer" :style="{ 'padding-left': drawerWidth + 'px' }" @mousedown="onMouseDown"></v-divider>
   
       <!-- Main Content -->
       <v-main class="d-flex align-center justify-center" style="padding-left: 0px;">
@@ -158,6 +161,83 @@
         </v-form>
       </v-card>
 
+
+
+      <v-card v-if="formType === 'upAddr'" class="mx-auto" style="width: 350px; height: 520px; overflow-y: auto;">
+        <v-form >
+          <v-container>
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-text-field
+                hide-details="auto"
+                label="链接名称"
+                v-model:model-value="fromDataRef.linkName"
+              ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="8"
+              >
+                <v-text-field
+                  hide-details="auto"
+                  label="ip地址"
+                  v-model:model-value="fromDataRef.host"
+                ></v-text-field>
+              </v-col>
+
+              <v-col
+                cols="12"
+                md="4"
+              >
+                <v-text-field
+                  hide-details="auto"
+                  label="端口"
+                  v-model:model-value="fromDataRef.port"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-text-field
+                  hide-details="auto"
+                  label="密码"
+                  v-model:model-value="fromDataRef.password"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-switch label="监听" inset v-model:model-value="fromDataRef.listenRedis"></v-switch>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" md="3" sm="6">
+                <v-btn rounded="0" size="x-large" block @click="upCancel">取消</v-btn>
+              </v-col>
+              <v-col cols="12" md="3" sm="6">
+                <v-btn rounded="0" size="x-large" block @click="upLinkSubmit">保存</v-btn>
+              </v-col>
+            </v-row>
+
+          </v-container>
+        </v-form>
+      </v-card>
     </v-overlay>
   </template>
   
@@ -206,7 +286,35 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
     fromData.listenRedis = false;
     fromData.key = "";
     fromData.level = 0;
-}
+  }
+
+    //添加地址
+  const fromDataRef = reactive({
+    id: "",
+    linkName: "",
+    host: "",
+    port: "",
+    password: "",
+    username: "",
+    linkType: "",
+    listenRedis: false,
+    key: "",
+    level: 0,
+    db: "",
+  })
+  //清理
+  function clearFormDataRef() {
+    fromDataRef.id = "";
+    fromDataRef.linkName = "";
+    fromDataRef.host = "";
+    fromDataRef.port = "";
+    fromDataRef.password = "";
+    fromDataRef.username = "";
+    fromDataRef.linkType = "";
+    fromDataRef.listenRedis = false;
+    fromDataRef.key = "";
+    fromDataRef.level = 0;
+  }
 
 
   onBeforeMount(async () => {
@@ -215,29 +323,6 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
         // 转成json字符串并格式化
         cache_link.value = JSON.parse(data);
         for (let i in cache_link.value) {
-
-
-          // let data:any = await invoke("get_db_num", { redisUri: cache_link.value[i].nname })
-          // console.log(data)
-          // let temp:any[] = []
-          // if (!data.is_success) {
-          //     await message("链接redis失败！", { title: '提示', kind: 'error' })
-          //     //upTreeVer();
-          //     return [];
-          // }
-          // for (const [key, value] of Object.entries(data.data)) {
-          //     temp.push({
-          //         "leaf":false,
-          //         "num":value,
-          //         "name":key + "[ " + value + " ]",
-          //         "db": key,
-          //         "nname": key,
-          //         "redis_uri":cache_link.value[i].nname,
-          //         "children":[],
-          //         "level": cache_link.value[i].level + 1,
-          //         "json": key,
-          //     });
-          // }
           cache_link.value[i].children = [];
           if (!cache_link.value[i].title) {
             cache_link.value[i].title = cache_link.value[i].name
@@ -347,6 +432,50 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
     formType.value = "addr";
   }
 
+  function upLinkFun(data: any) {
+    fromDataRef.id = data.id;
+    fromDataRef.linkName = data.name;
+    fromDataRef.host = data.host;
+    fromDataRef.port = data.port;
+    fromDataRef.password = data.password;
+    fromDataRef.username = data.username;
+    fromDataRef.linkType = data.linkType;
+    fromDataRef.listenRedis = data.listenRedis;
+    if (data.level == undefined) {
+      fromDataRef.key = ("db库：" + data.db + "   " + data.nname);
+    } else {
+      fromDataRef.key = data.nname;
+    }
+    fromDataRef.level = data.level;
+    fromDataRef.db = data.db;
+    overlay.value = true;
+    formType.value = "upAddr";
+  }
+
+
+  async function delLinkFun(data: any) {
+    // Do you have permission to send a notification?
+    let permissionGranted = await isPermissionGranted();
+    // If not we need to request it
+    if (!permissionGranted) {
+        const permission = await requestPermission();
+        permissionGranted = permission === 'granted';
+    }
+    // Once permission has been granted we can send the notification
+    if (permissionGranted) {
+        sendNotification({ title: 'Tauri', body: 'Tauri is awesome!' });
+    }
+    const answer = await ask("是否删除 【" + data.name + "】", {
+        title:"提示",
+        kind: "warning"
+    })
+    console.log(answer)
+    if (answer) {
+        cache_link.value = cache_link.value.filter(item => item.id !== data.id)
+        saveCacheFile(JSON.stringify(cache_link.value));
+    }
+  }
+
 
   watch(overlay, (n, _) => {
     if (!n) {
@@ -380,6 +509,40 @@ function addLinkSubmit() {
 function addCancel() {
     overlay.value = false;
     clearFormData();
+}
+
+
+async function upLinkSubmit() {
+
+  for (const i in cache_link.value) {
+        if (cache_link.value[i].id == fromDataRef.id) {
+            cache_link.value[i].name = fromDataRef.linkName;
+            cache_link.value[i].nname = "redis://" + ((fromDataRef.password) ? ( ":" + fromDataRef.password + "@") : "") + fromDataRef.host + ":" + fromDataRef.port;
+            cache_link.value[i].leaf = false;
+            cache_link.value[i].listenRedis = fromDataRef.listenRedis;
+            cache_link.value[i].password = fromDataRef.password;
+            cache_link.value[i].host = fromDataRef.host;
+            cache_link.value[i].port = fromDataRef.port;
+            cache_link.value[i].level = 0;
+            if (fromDataRef.listenRedis) {
+
+            }
+            let data:any = await invoke("reset_client", { redisUri: cache_link.value[i].nname });
+            console.log(data);
+            if (!data.is_success) {
+              alert(data.msg)
+              return
+            }
+        }
+    }
+    saveCacheFile(JSON.stringify(cache_link.value));
+    overlay.value = false;
+    clearFormDataRef
+}
+
+function upCancel() {
+    overlay.value = false;
+    clearFormDataRef();
 }
 
 
@@ -435,7 +598,10 @@ const handleMouseLeave = () => {
 
   <style scoped>
 
-
+  .v-navigation-drawer__contente::-webkit-scrollbar {
+    width: 1px !important;
+    height: 1px !important; /* 水平滚动条 */
+  }
 
 
   .resizer {

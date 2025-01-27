@@ -39,6 +39,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 async-std = "1.13.0"
 encoding_rs = "0.8.35"
+url = "2.5.4"
 
 
 

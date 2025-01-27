@@ -23,7 +23,13 @@ body,
     margin: 0;
     padding: 0;
     scrollbar-width: none;
+}
 
 
+
+/* 滚动条宽度 */
+::-webkit-scrollbar {
+  width: 1px;
+  height: 1px;
 }
 </style>
