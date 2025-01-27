@@ -1,61 +1,267 @@
-<script setup lang="ts">
-import { onBeforeMount, reactive, Ref, ref } from "vue";
-import { invoke } from '@tauri-apps/api/core';
-import type Node from 'element-plus/es/components/tree/src/model/node'
-import { writeTextFile, readTextFile, create, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
-import { message, ask } from "@tauri-apps/plugin-dialog";
-import { ElTree } from "element-plus";
+<template>
+    <v-layout class="rounded rounded-md">
+      <!-- Navigation Drawer -->
+      <v-navigation-drawer
+        :width="drawerWidth"
+        floating
+        permanent
+      >
 
+      <div class="image-uploader" :class="{ 'hovered': isHovered }" @mouseover="handleMouseOver" @mouseleave="handleMouseLeave" @click="addListFun">
+          <div class="add-image">
+          <span>+</span>
+          </div>
+      </div>
+
+      <v-expansion-panels>
+        <v-expansion-panel v-for="(link, i) in cache_link">
+          <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="bg-primary position-sticky top-0 pa-3 mt-2" style="z-index: 20;">
+            <v-row no-gutters>
+              <v-col class="d-flex justify-start" cols="8">
+                {{ link.name }}
+              </v-col>
+              <v-col
+                class="text--secondary"
+                cols="4"
+              >
+                <v-fade-transition leave-absolute>
+                  <span
+                    v-if="expanded"
+                    key="0"
+                    class="text-overline"
+                  >
+                    {{  }}
+                  </span>
+                  <div key="1" style="margin-top: -4px;">
+                    <v-icon @click.stop="upLinkFun(link)" icon="mdi-cog" />
+                    <v-icon @click.stop="delLinkFun(link)" icon="mdi-trash-can" />
+                  </div>
+                 
+               
+                </v-fade-transition>
+              </v-col>
+            </v-row>
+          </v-expansion-panel-title>
+          <v-expansion-panel-text>
+            
+
+            <v-treeview
+              v-model:activated="active"
+              v-model:opened="initiallyOpen"
+              :items="link.children"
+              :load-children="fetchUsers"
+              density="compact"
+              activatable
+              open-on-click
+              item-title="name"
+              item-value="json"
+              @update:activated="handleNodeClick"
+              style="margin-left: -35px; "
+            >
+              <template v-slot:prepend="{ item, isOpen }">
+                <v-icon v-if="!item.file">
+                  {{ isOpen ? 'mdi-folder-open' : 'mdi-folder' }}
+                </v-icon>
+                <v-icon v-else>
+                  {{ files[item.file] }}
+                </v-icon>
+              </template>
+            </v-treeview>
+
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+      </v-navigation-drawer>
+  
+  
+      <v-divider :thickness="8" vertical class="resizer" :style="{ 'padding-left': drawerWidth + 'px' }" @mousedown="onMouseDown"></v-divider>
+  
+      <!-- Main Content -->
+      <v-main class="d-flex align-center justify-center" style="padding-left: 0px;">
+        <text>{{ content }}</text>
+      </v-main>
+    </v-layout>
+
+
+    <v-overlay v-model="overlay" style="display:flex;justify-content: center; align-items:center; ">
+
+      <v-card v-if="formType === 'addr'" class="mx-auto" style="width: 350px; height: 520px; overflow-y: auto;">
+        <v-form >
+          <v-container>
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-text-field
+                hide-details="auto"
+                label="链接名称"
+                v-model:model-value="fromData.linkName"
+              ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="8"
+              >
+                <v-text-field
+                  hide-details="auto"
+                  label="ip地址"
+                  v-model:model-value="fromData.host"
+                ></v-text-field>
+              </v-col>
+
+              <v-col
+                cols="12"
+                md="4"
+              >
+                <v-text-field
+                  hide-details="auto"
+                  label="端口"
+                  v-model:model-value="fromData.port"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-text-field
+                  hide-details="auto"
+                  label="密码"
+                  v-model:model-value="fromData.password"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-switch label="监听" inset v-model:model-value="fromData.listenRedis"></v-switch>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" md="3" sm="6">
+                <v-btn rounded="0" size="x-large" block @click="addCancel">取消</v-btn>
+              </v-col>
+              <v-col cols="12" md="3" sm="6">
+                <v-btn rounded="0" size="x-large" block @click="addLinkSubmit">保存</v-btn>
+              </v-col>
+            </v-row>
+
+          </v-container>
+        </v-form>
+      </v-card>
+
+
+
+      <v-card v-if="formType === 'upAddr'" class="mx-auto" style="width: 350px; height: 520px; overflow-y: auto;">
+        <v-form >
+          <v-container>
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-text-field
+                hide-details="auto"
+                label="链接名称"
+                v-model:model-value="fromDataRef.linkName"
+              ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="8"
+              >
+                <v-text-field
+                  hide-details="auto"
+                  label="ip地址"
+                  v-model:model-value="fromDataRef.host"
+                ></v-text-field>
+              </v-col>
+
+              <v-col
+                cols="12"
+                md="4"
+              >
+                <v-text-field
+                  hide-details="auto"
+                  label="端口"
+                  v-model:model-value="fromDataRef.port"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-text-field
+                  hide-details="auto"
+                  label="密码"
+                  v-model:model-value="fromDataRef.password"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col
+                cols="12"
+                md="12"
+              >
+              <v-switch label="监听" inset v-model:model-value="fromDataRef.listenRedis"></v-switch>
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12" md="3" sm="6">
+                <v-btn rounded="0" size="x-large" block @click="upCancel">取消</v-btn>
+              </v-col>
+              <v-col cols="12" md="3" sm="6">
+                <v-btn rounded="0" size="x-large" block @click="upLinkSubmit">保存</v-btn>
+              </v-col>
+            </v-row>
+
+          </v-container>
+        </v-form>
+      </v-card>
+    </v-overlay>
+  </template>
+  
+<script lang="ts" setup>
+import { onBeforeMount, reactive, Ref, ref, watch } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
+import { message, ask } from "@tauri-apps/plugin-dialog";
+import { writeTextFile, readTextFile, create, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
+  const drawerWidth = ref(230);
+  
+  const cacheFileName = "redis_links.json";
+  const cache_link:Ref<Array<any>> = ref([]);
+  const initiallyOpen = ref(['public'])
 
-const addLink = ref(false);
-const upLink = ref(false)
-const content = ref("");
-const cacheFileName = "redis_links.json";
-const cache_link:Ref<Array<any>> = ref([]);
-const treeVer = ref(0);
-
-onBeforeMount(async () => {
-    let data = await getCacheFile()
-    if (data) {
-        // 转成json字符串并格式化
-        cache_link.value = JSON.parse(data);
-    } else {
-        cache_link.value = [];
-    }
-    upTreeVer();
-
-
-    await invoke("pubsub")
-})
-
-function upTreeVer() {
-    treeVer.value++;
-    console.log("-----------" + treeVer.value)
-    console.log(cache_link.value)
-    
-}
-
-
-interface Tree {
-    label: string
-    children?: Tree[]
-    redis_uri: string
-    db: string
-}
-
-const handleNodeClick = async (data: Tree) => {
-    if (data.leaf) {
-        console.log(data.nname)
-        console.log(data.redis_uri)
-        let result:any = await invoke("get_value", { key: data.nname, redisUri: data.redis_uri, db: data.db });
-        content.value = result.data;
-    }
-}
-
-
-const sizeForm = reactive({
+  const active = ref([]);
+  const content = ref("");
+  //遮罩使用
+  const overlay = ref(false);
+  //表单类型
+  const formType = ref("");
+  //添加地址
+  const fromData = reactive({
     id: "",
     linkName: "",
     host: "",
@@ -67,241 +273,187 @@ const sizeForm = reactive({
     key: "",
     level: 0,
     db: "",
-})
+  })
+  //清理
+  function clearFormData() {
+    fromData.id = "";
+    fromData.linkName = "";
+    fromData.host = "";
+    fromData.port = "";
+    fromData.password = "";
+    fromData.username = "";
+    fromData.linkType = "";
+    fromData.listenRedis = false;
+    fromData.key = "";
+    fromData.level = 0;
+  }
+
+    //添加地址
+  const fromDataRef = reactive({
+    id: "",
+    linkName: "",
+    host: "",
+    port: "",
+    password: "",
+    username: "",
+    linkType: "",
+    listenRedis: false,
+    key: "",
+    level: 0,
+    db: "",
+  })
+  //清理
+  function clearFormDataRef() {
+    fromDataRef.id = "";
+    fromDataRef.linkName = "";
+    fromDataRef.host = "";
+    fromDataRef.port = "";
+    fromDataRef.password = "";
+    fromDataRef.username = "";
+    fromDataRef.linkType = "";
+    fromDataRef.listenRedis = false;
+    fromDataRef.key = "";
+    fromDataRef.level = 0;
+  }
 
 
-function clearFormData() {
-    sizeForm.id = "";
-    sizeForm.linkName = "";
-    sizeForm.host = "";
-    sizeForm.port = "";
-    sizeForm.password = "";
-    sizeForm.username = "";
-    sizeForm.linkType = "";
-    sizeForm.listenRedis = false;
-    sizeForm.key = "";
-    sizeForm.level = 0;
-}
-
-
-
-interface Tree {
-    nname: string
-    name: string
-    leaf?: boolean
-}
-
-const props = {
-    label: 'name',
-    children: 'zones',
-    isLeaf: 'leaf',
-}
-
-const loadNode = async (
-    node: Node,
-    resolve: (data: Tree[]) => void,
-    reject: () => void
-) => {
-    console.log(node.data);
-    if (node.level === 0) {
-        //let data:Array<any> = await invoke("get_keys", { key: "*" })
-        let data = await getCacheFile()
-        if (data) {
-            // 转成json字符串并格式化
-            cache_link.value = JSON.parse(data);
-        } else {
-
-            cache_link.value = [];
-        }
-        return resolve(cache_link.value)
-    }
-    if (node.level == 1) {
-        console.log(node.data.nname)
-        let data:any = await invoke("get_db_num", { redisUri: node.data.nname })
-        console.log(data)
-        let temp:any[] = []
-        if (!data.is_success) {
-            await message("链接redis失败！", { title: '提示', kind: 'error' })
-            //upTreeVer();
-            return reject()
-        }
-        for (const [key, value] of Object.entries(data.data)) {
-            temp.push({
-                "leaf":false,
-                "num":value,
-                "name":key + "[ " + value + " ]",
-                "db": key,
-                "nname":"",
-                "redis_uri":node.data.nname
-            });
-        }
-        return resolve(temp)
-    } else if (node.level == 2) {
-        let data:any = await invoke("get_keys", { key: "*", redisUri: node.data.redis_uri, db: node.data.db })
-        console.log(data)
-        if (data.is_success) {
-            if (data.data && data.data.length > 0) {
-                return resolve(data.data)
-            }
-            return reject()
-        } else {
-            await message("链接redis失败！", { title: '提示', kind: 'error' })
-            //upTreeVer();
-            return reject()
-        }
-    } else if (node.level > 2) {
-        
-        let data:any = await invoke("get_keys", { key: node.data.nname + "*", redisUri: node.data.redis_uri, db: node.data.db })
-        if (data.is_success) {
-            if (data.data && data.data.length > 0) {
-                return resolve(data.data)
-            }
-            return reject()
-        } else {
-            await message("链接redis失败！", { title: '提示', kind: 'error' })
-            //upTreeVer();
-            return reject()
-        }
-    }
-}
-const asideWidth = ref(200); // 左侧区域初始宽度
-
-// 鼠标按下时触发的事件
-const onMouseDown = (e: MouseEvent) => {
-    const startX = e.clientX;
-    const startWidth = asideWidth.value;
-
-    // 鼠标移动事件处理
-    const onMouseMove = (moveEvent: MouseEvent) => {
-    const offsetX = moveEvent.clientX - startX;
-    // 限制宽度在 100px 到 (窗口宽度 - 100) 之间
-    asideWidth.value = Math.max(100, Math.min(window.innerWidth - 100, startWidth + offsetX));
-
-    };
-
-    // 鼠标释放时移除事件监听
-    const onMouseUp = () => {
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-};
-
-
-
-const getCacheFile = async () : Promise<string> => {
-    console.log("获取文件")
-      //判断默认文件是否存在
-    const exit = await exists(cacheFileName, { baseDir: BaseDirectory.AppData });
-    console.log(exit)
-    if (!exit) {
-        console.log("创建文件")
-        await create(cacheFileName, { baseDir: BaseDirectory.AppData })
-    }
-    let data = await readTextFile(cacheFileName, { baseDir: BaseDirectory.AppData })
+  onBeforeMount(async () => {
+    let data = await getCacheFile()
     if (data) {
         // 转成json字符串并格式化
-        return data;
-    }
-    return "";
-}
-
-
-const saveCacheFile = async (data: string) => {
-  await writeTextFile(cacheFileName, data, { baseDir: BaseDirectory.AppData }) 
-}
-//添加链接按钮
-const isHovered = ref(false);
-const handleMouseOver = () => {
-  isHovered.value = true;
-};
-const handleMouseLeave = () => {
-  isHovered.value = false;
-};
-//添加方法
-//"redis://192.168.5.126:6379/1";
-function addLinkSubmit() {
-   cache_link.value.push(
-        {
-            id: new Date().getTime(),
-            name: sizeForm.linkName,
-            nname: "redis://" + ((sizeForm.password) ? ( ":" + sizeForm.password + "@") : "") + sizeForm.host + ":" + sizeForm.port,
-            leaf: false,
-            listenRedis: sizeForm.listenRedis,
-            password: sizeForm.password,
-            host: sizeForm.host,
-            port: sizeForm.port,
-            level: 0,
+        cache_link.value = JSON.parse(data);
+        for (let i in cache_link.value) {
+          cache_link.value[i].children = [];
+          if (!cache_link.value[i].title) {
+            cache_link.value[i].title = cache_link.value[i].name
+          }
         }
-    )
-    console.log(cache_link.value)
-    saveCacheFile(JSON.stringify(cache_link.value));
-    addLink.value = false;
-    upTreeVer();
-    clearFormData
-}
-
-function addCancel() {
-    addLink.value = false;
-    clearFormData();
-}
-
-//添加方法
-//"redis://192.168.5.126:6379/1";
-function upLinkSubmit() {
-    for (const i in cache_link.value) {
-        if (cache_link.value[i].id == sizeForm.id) {
-            cache_link.value[i].name = sizeForm.linkName;
-            cache_link.value[i].nname = "redis://" + ((sizeForm.password) ? ( ":" + sizeForm.password + "@") : "") + sizeForm.host + ":" + sizeForm.port;
-            cache_link.value[i].leaf = false;
-            cache_link.value[i].listenRedis = sizeForm.listenRedis;
-            cache_link.value[i].password = sizeForm.password;
-            cache_link.value[i].host = sizeForm.host;
-            cache_link.value[i].port = sizeForm.port;
-            cache_link.value[i].level = 0;
-            if (sizeForm.listenRedis) {
-
-            }
-        }
-    }
-    saveCacheFile(JSON.stringify(cache_link.value));
-    upLink.value = false;
-    upTreeVer();
-    clearFormData
-}
-
-function upCancel() {
-    upLink.value = false;
-    setTimeout(() => {
-        clearFormData();
-    }, 1000)
-    
-}
-
-function updateLink(node: any, data: any) {
-    console.log(data)
-    sizeForm.id = data.id;
-    sizeForm.linkName = data.name;
-    sizeForm.host = data.host;
-    sizeForm.port = data.port;
-    sizeForm.password = data.password;
-    sizeForm.username = data.username;
-    sizeForm.linkType = data.linkType;
-    sizeForm.listenRedis = data.listenRedis;
-    if (data.level == undefined) {
-        sizeForm.key = ("db库：" + data.db + "   " + data.nname);
     } else {
-        sizeForm.key = data.nname;
+        cache_link.value = [{
+      title: '.git',
+    }];
     }
-    sizeForm.level = data.level;
-    sizeForm.db = data.db;
-    upLink.value = true;
-}
+    console.log(cache_link.value);
+    await invoke("pubsub")
+})
 
-//删除
-async function removeLink(node: any, data: any) {
+  // 鼠标按下时触发的事件
+  const onMouseDown = (e: MouseEvent) => {
+      const startX = e.clientX;
+      const startWidth = drawerWidth.value;
+      // 鼠标移动事件处理
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        const offsetX = moveEvent.clientX - startX;
+        // 限制宽度在 100px 到 (窗口宽度 - 100) 之间
+        drawerWidth.value = Math.max(100, Math.min(window.innerWidth - 100, startWidth + offsetX));
+      };
+      // 鼠标释放时移除事件监听
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+  };
+
+
+
+  async function fetchUsers (item: any) {
+    console.log(item)
+    if (item.level == 0) {
+      let data:any = await invoke("get_db_num", { redisUri: item.nname })
+      console.log(data)
+      let temp:any[] = []
+      if (!data.is_success) {
+          await message("链接redis失败！", { title: '提示', kind: 'error' })
+          //upTreeVer();
+          return [];
+      }
+      for (const [key, value] of Object.entries(data.data)) {
+          temp.push({
+              "leaf":false,
+              "num":value,
+              "name":key + "[ " + value + " ]",
+              "db": key,
+              "nname": key,
+              "redis_uri":item.nname,
+              "children":[],
+              "level": item.level + 1,
+              "json": key,
+          });
+      }
+      console.log("------temp--------")
+      console.log(temp)
+      item.children = temp;
+      return temp;
+    } else if (item.level == 1) {
+      let data:any = await invoke("get_keys", { key: "*", redisUri: item.redis_uri, db: item.db })
+      console.log("--------------")
+      console.log(data)
+      if (data.is_success) {
+          if (data.data && data.data.length > 0) {
+            for (let i in data.data) {
+              data.data[i].level = item.level + 1;
+              data.data[i].json = {nname: data.data[i].nname, redis_uri: data.data[i].redis_uri, db: data.data[i].db}
+            }
+            item.children = data.data;
+            return data.data
+          }
+          return [];
+      } else {
+          await message("链接redis失败！", { title: '提示', kind: 'error' })
+          //upTreeVer();
+          return [];
+      }
+    } else if(item.level > 1) {
+      let data:any = await invoke("get_keys", { key: item.nname + "*", redisUri: item.redis_uri, db: item.db })
+      console.log("--------------")
+      console.log(data)
+      if (data.is_success) {
+          if (data.data && data.data.length > 0) {
+            for (let i in data.data) {
+              data.data[i].level = item.level + 1;
+              data.data[i].json = {nname: data.data[i].nname, redis_uri: data.data[i].redis_uri, db: data.data[i].db}
+            }
+            item.children = data.data;
+            return data.data
+          }
+          return [];
+      } else {
+          await message("链接redis失败！", { title: '提示', kind: 'error' })
+          //upTreeVer();
+          return [];
+      }
+    }
+  }
+
+  function addListFun() {
+    overlay.value = true;
+    formType.value = "addr";
+  }
+
+  function upLinkFun(data: any) {
+    fromDataRef.id = data.id;
+    fromDataRef.linkName = data.name;
+    fromDataRef.host = data.host;
+    fromDataRef.port = data.port;
+    fromDataRef.password = data.password;
+    fromDataRef.username = data.username;
+    fromDataRef.linkType = data.linkType;
+    fromDataRef.listenRedis = data.listenRedis;
+    if (data.level == undefined) {
+      fromDataRef.key = ("db库：" + data.db + "   " + data.nname);
+    } else {
+      fromDataRef.key = data.nname;
+    }
+    fromDataRef.level = data.level;
+    fromDataRef.db = data.db;
+    overlay.value = true;
+    formType.value = "upAddr";
+  }
+
+
+  async function delLinkFun(data: any) {
     // Do you have permission to send a notification?
     let permissionGranted = await isPermissionGranted();
     // If not we need to request it
@@ -321,204 +473,144 @@ async function removeLink(node: any, data: any) {
     if (answer) {
         cache_link.value = cache_link.value.filter(item => item.id !== data.id)
         saveCacheFile(JSON.stringify(cache_link.value));
-        upTreeVer();
     }
+  }
+
+
+  watch(overlay, (n, _) => {
+    if (!n) {
+      formType.value = "";
+    } 
+  })
+
+
+//添加redis方法
+//"redis://192.168.5.126:6379/1";
+function addLinkSubmit() {
+   cache_link.value.push(
+        {
+            id: new Date().getTime(),
+            name: fromData.linkName,
+            nname: "redis://" + ((fromData.password) ? ( ":" + fromData.password + "@") : "") + fromData.host + ":" + fromData.port,
+            leaf: false,
+            listenRedis: fromData.listenRedis,
+            password: fromData.password,
+            host: fromData.host,
+            port: fromData.port,
+            level: 0,
+        }
+    )
+    console.log(cache_link.value)
+    saveCacheFile(JSON.stringify(cache_link.value));
+    overlay.value = false;
+    clearFormData
+}
+
+function addCancel() {
+    overlay.value = false;
+    clearFormData();
 }
 
 
+async function upLinkSubmit() {
+
+  for (const i in cache_link.value) {
+        if (cache_link.value[i].id == fromDataRef.id) {
+            cache_link.value[i].name = fromDataRef.linkName;
+            cache_link.value[i].nname = "redis://" + ((fromDataRef.password) ? ( ":" + fromDataRef.password + "@") : "") + fromDataRef.host + ":" + fromDataRef.port;
+            cache_link.value[i].leaf = false;
+            cache_link.value[i].listenRedis = fromDataRef.listenRedis;
+            cache_link.value[i].password = fromDataRef.password;
+            cache_link.value[i].host = fromDataRef.host;
+            cache_link.value[i].port = fromDataRef.port;
+            cache_link.value[i].level = 0;
+            if (fromDataRef.listenRedis) {
+
+            }
+            let data:any = await invoke("reset_client", { redisUri: cache_link.value[i].nname });
+            console.log(data);
+            if (!data.is_success) {
+              alert(data.msg)
+              return
+            }
+        }
+    }
+    saveCacheFile(JSON.stringify(cache_link.value));
+    overlay.value = false;
+    clearFormDataRef
+}
+
+function upCancel() {
+    overlay.value = false;
+    clearFormDataRef();
+}
 
 
-</script>
+const handleNodeClick = async (nodes: unknown) => {
+  const activatedNodes = Array.isArray(nodes) ? nodes : [nodes];
+  const clickedNode = activatedNodes[0];  // Get the first activated node
+  // Check if the clicked node is a leaf (no children)
+  if (!clickedNode.children || clickedNode.children.length === 0) {
+    let result:any = await invoke("get_value", { key: clickedNode.nname, redisUri: clickedNode.redis_uri, db: clickedNode.db });
+    console.log(result)
+    content.value = result.data;
+  }
+};
 
-<template>
+//添加链接按钮
+const isHovered = ref(false);
+const handleMouseOver = () => {
+  isHovered.value = true;
+};
+const handleMouseLeave = () => {
+  isHovered.value = false;
+};
 
 
-<div class="common-layout" style="flex: 1">
-    <el-container>
-        <el-aside :style="{ width: asideWidth + 'px', backgroundColor: '#e9e9e9' }">
-            <div class="image-uploader" :class="{ 'hovered': isHovered }" @mouseover="handleMouseOver" @mouseleave="handleMouseLeave" @click="addLink = true">
-                <div class="add-image">
-                <span>+</span>
-                </div>
+  const getCacheFile = async () : Promise<string> => {
+    console.log("获取文件")
+      //判断默认文件是否存在
+    const exit = await exists(cacheFileName, { baseDir: BaseDirectory.AppData });
+    console.log(exit)
+    if (!exit) {
+        console.log("创建文件")
+        await create(cacheFileName, { baseDir: BaseDirectory.AppData })
+    }
+    let data = await readTextFile(cacheFileName, { baseDir: BaseDirectory.AppData })
+    if (data) {
+        // 转成json字符串并格式化
+        return data;
+    }
+    return "";
+  }
 
-            </div>
-            <el-tree :style="{maxWidth: asideWidth + 'px'}" :props="props" :load="loadNode" lazy 
-            @node-click="handleNodeClick" :expand-on-click-node="false" :key="treeVer">
-                <template #default="{ node, data }">
-                    <span class="custom-tree-node">
-                    <span>{{ node.label }}</span>
-                    <span>
-                        <!-- <a @click="append(data)"> Append </a> -->
-                        <a v-if="node.level == 1" 
-                        style="margin-left: 8px; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 10px;" 
-                        @click="removeLink(node, data)">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" 
-                                class="size-6" style="width: 100%; height: 100%; vertical-align: middle;">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                            </svg>
-                        </a>
-                    </span>
-                    <span>
-                        <a style="margin-left: 5px; display: inline-flex; width: 15px; height: 10px;" @click="updateLink(node, data)">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
-                            </svg>
 
-                        </a>
-                    </span>
-                    </span>
-                </template>
-            </el-tree>
-        </el-aside>
+  const saveCacheFile = async (data: string) => {
+    await writeTextFile(cacheFileName, data, { baseDir: BaseDirectory.AppData }) 
+  }
 
-        <!-- 拖动条 -->
-        <div class="resize-handle" @mousedown="onMouseDown"></div>
+
+
+  </script>
   
-        <!-- Main 部分（右侧内容区） -->
-        <el-main style="background-color: #fff; padding: 20px;">
-          {{ content }}
-        </el-main>
-
-    </el-container>
-</div>
 
 
 
+  <style scoped>
+
+  .v-navigation-drawer__contente::-webkit-scrollbar {
+    width: 1px !important;
+    height: 1px !important; /* 水平滚动条 */
+  }
 
 
+  .resizer {
+    display: flex;
+    cursor: ew-resize;
+    height: 100vh;
+  }
 
-<el-dialog v-model="addLink" title="添加卡片" width="380">
-
-    <el-form ref="form" style="max-width: 600px" :model="sizeForm" label-width="auto" label-position="left" size="small" >
-        <el-form-item label="链接名称">
-            <el-input v-model="sizeForm.linkName" />
-        </el-form-item>
-        <el-form-item label="ip地址">
-            <el-input v-model="sizeForm.host" />
-        </el-form-item>
-        <el-form-item label="端口">
-            <el-input v-model="sizeForm.port" />
-        </el-form-item>
-        <el-form-item label="密码">
-            <el-input v-model="sizeForm.password" />
-        </el-form-item>
-        <el-form-item label="监听">
-            <el-switch v-model="sizeForm.listenRedis" style="--el-switch-on-color: #13ce66; --el-switch-off-color: #ff4949"/>
-        </el-form-item>
-        <el-form-item>
-            <el-button type="primary" @click="addLinkSubmit">创建</el-button>
-            <el-button @click="addCancel">取消</el-button>
-        </el-form-item>
-    </el-form>
-
-</el-dialog>
-
-
-<el-dialog v-model="upLink" title="修改卡片" width="380">
-
-<el-form ref="form" style="max-width: 600px" :model="sizeForm" label-width="auto" label-position="left" size="small" >
-    <el-form-item v-if="sizeForm.level == 0" label="链接名称">
-        <el-input v-model="sizeForm.linkName" />
-    </el-form-item>
-    <el-form-item v-if="sizeForm.level == 0" label="ip地址">
-        <el-input v-model="sizeForm.host" />
-    </el-form-item>
-    <el-form-item v-if="sizeForm.level == 0" label="端口">
-        <el-input v-model="sizeForm.port" />
-    </el-form-item>
-    <el-form-item v-if="sizeForm.level == 0" label="密码">
-        <el-input v-model="sizeForm.password" />
-    </el-form-item>
-    <el-form-item v-if="sizeForm.level != 0" label="监听key">
-        <el-input disabled v-model="sizeForm.key" />
-    </el-form-item>
-    <el-form-item v-if="sizeForm.level != 0"  label="监听">
-        <el-switch v-model="sizeForm.listenRedis" style="--el-switch-on-color: #13ce66; --el-switch-off-color: #ff4949"/>
-    </el-form-item>
-    <el-form-item>
-        <el-button type="primary" @click="upLinkSubmit">更新</el-button>
-        <el-button @click="upCancel">取消</el-button>
-    </el-form-item>
-</el-form>
-
-</el-dialog>
-
-</template>
-
-<style scoped>
-.el-tooltip__trigger {
-margin-left: -15px;
-}
-
-.el-dropdown-menu__item {
-height: 15px;
-}
-
-.common-layout {
-    height: 100%;
-}
-
-.el-container {
-height: 100%;
-display: flex;
-}
-
-.el-aside{
-background: #f4f4f4;
-position: sticky;
-top: 0;
-overflow: auto;
-}
-
-.el-main {
-background: #fff;
-overflow-y: auto;
-flex-grow: 1;
-height: 100%;
-}
-
-.titlebar {
-z-index: 1000;
-height: 30px;
-background: #ffffff;
-user-select: none;
-display: flex;
-position: fixed;
-top: 0;
-left: 0;
-right: 0;
-justify-content: space-between;
-align-items: flex-end;
-}
-.titleName {
-display: flex;
-justify-content: center;
-align-items: center;
-
-}
-.titlebar-button {
-display: inline-flex;
-justify-content: center;
-align-items: center;
-width: 30px;
-height: 30px;
-user-select: none;
--webkit-user-select: none;
-}
-.titlebar-button:hover {
-background: #a1a6a7;
-}
-
-
-
-.resize-handle {
-  width: 10px;
-  cursor: ew-resize;
-  background-color: #ddd;
-  height: 100%;
-}
-
-.image-uploader {
+  .image-uploader {
   position: relative;
   height: 20px;
   border: 2px dashed #ccc;
@@ -533,26 +625,5 @@ background: #a1a6a7;
   border-color: #265abb; /* 当鼠标移入时边框颜色变为红色 */
 }
 
-.image-container {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-
-.image-container img {
-  width: 100%;
-  height: 100%;
-  /* object-fit: cover; 等比例缩小图片 */
-  object-fit: contain; /* 等比例缩小图片，保持原始宽高比 */
-}
-
-
-a svg path {
-    transition: all 0.3s ease; /* 使颜色变化更加平滑 */
-}
-
-a:hover svg path {
-    stroke: #f00; /* 鼠标移入时改变边框颜色 */
-    fill: #f00;   /* 如果需要填充颜色，设置为红色 */
-}
-</style>
+  </style>
+  

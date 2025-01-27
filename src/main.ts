@@ -1,6 +1,4 @@
 import { createApp } from 'vue'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
 
 import router from './router'
 import App from './App.vue'
@@ -33,6 +31,6 @@ const vuetify = createVuetify({
 })
 
 const app = createApp(App)
-app.use(ElementPlus).use(router)
+app.use(router)
 app.use(vuetify)
 app.mount('#app')

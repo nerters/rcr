@@ -2,7 +2,6 @@ use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     WebviewUrl, WebviewWindowBuilder,
 };
-use utils::redis_util::{ttt, zzz};
 
 pub mod serve;
 pub mod utils;
@@ -16,8 +15,6 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     utils::creat_folder::creat_base_folder();
-
-    //ttt();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
