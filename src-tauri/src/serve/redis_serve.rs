@@ -11,7 +11,7 @@ pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
 }
 
 #[tauri::command]
-pub fn get_value(redis_uri: String, key: String, db: String) -> R<String> {
+pub fn get_value(redis_uri: String, key: String, db: String) -> R<(String, i64)> {
     utils::redis_util::get_value(redis_uri, key, db)
 }
 

@@ -194,7 +194,7 @@ pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
     }
 }
 
-pub fn get_value(redis_uri: String, key: String, db: String) -> R<String> {
+pub fn get_value(redis_uri: String, key: String, db: String) -> R<(String, i64)> {
     let mut r_key = String::from("");
     match key.strip_suffix("*") {
         Some(rest) => {
@@ -223,25 +223,34 @@ pub fn get_value(redis_uri: String, key: String, db: String) -> R<String> {
         let rest: Result<Vec<u8>, redis::RedisError> = connection.get(r_key.clone());
         match rest {
             Ok(rest) => {
-               
+                let mut time: i64 = -1;
+                let ttl: Result<i64, redis::RedisError> = connection.ttl(key);
+                match ttl {
+                    Ok(ttl) => {
+                        time = ttl;
+                    },
+                    Err(e) => {
+                        return R::fail(format!("解析存活时间！{}", e));
+                    },
+                }
                 // 尝试不同的编码
                 let (decoded, _, _) = UTF_8.decode(&rest);
                 if !decoded.is_empty() {
                     log::info!("返回值： {:?}", decoded);
-                    return R::data(Some(decoded.into()));
+                    return R::data(Some((decoded.into(), time)));
                 }
 
                 let (decoded, _, _) = WINDOWS_1252.decode(&rest);
                 if !decoded.is_empty() {
                     log::info!("返回值： {:?}", decoded);
                     
-                    return R::data(Some(decoded.into()));
+                    return R::data(Some((decoded.into(), time)));
                 }
 
                 let (decoded, _, _) = WINDOWS_1252.decode(&rest);
                 if !decoded.is_empty() {
                     log::info!("返回值： {:?}", decoded);
-                    return R::data(Some(decoded.into()));
+                    return R::data(Some((decoded.into(), time)));
                 }
                 log::info!("返回值： {:?}", rest);
                 return R::fail(format!("返回值解析失败！"));
