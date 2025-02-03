@@ -1,5 +1,3 @@
-use cached::proc_macro::cached;
-use cached::SizedCache;
 use crypto::{digest::Digest, md5::Md5};
 use encoding_rs::{UTF_8, WINDOWS_1252};
 use r2d2::Pool;
@@ -293,6 +291,16 @@ fn group_key_to_cache(keys: Vec<String>, base_key: String) {
 
 //获取使用的db
 fn get_use_db_num(redis_uri: String) -> HashMap<usize, usize> {
+    let url = get_sourc_url(redis_uri.clone());
+    let info: Option<HashMap<usize, usize>> = cache_util::get_cache(&(url.clone() + "_use_db_num"));
+    match info {
+        Some(info) => {
+            return info;
+        },
+        None => {
+            log::info!("缓存中没有获取到！");
+        },
+    }
     if let Some(pool) = get_client(redis_uri.clone()) {
         let mut connection = pool.get().unwrap();
         // 手动执行 INFO 命令
@@ -321,6 +329,7 @@ fn get_use_db_num(redis_uri: String) -> HashMap<usize, usize> {
                 None
             })
             .collect();
+        cache_util::set_cache_timeout(url + "_use_db_num", db_info.clone(), 3600);
         db_info
     } else {
         HashMap::new()
@@ -330,6 +339,24 @@ fn get_use_db_num(redis_uri: String) -> HashMap<usize, usize> {
 //获取全部的db
 pub fn get_all_db_num(redis_uri: String) -> R<HashMap<usize, usize>> {
     let mut result: HashMap<usize, usize> = HashMap::new();
+    let url = get_sourc_url(redis_uri.clone());
+    let total:Option<usize> = cache_util::get_cache(&(url.clone() + "_total_databases"));
+    match total {
+        Some(total_databases) => {
+            println!("Total configured databases: {}", total_databases);
+            for i in 0..total_databases {
+                result.insert(i, 0);
+            }
+            let use_map = get_use_db_num(redis_uri);
+            for (k, v) in use_map {
+                result.insert(k, v);
+            }
+            return R::data(Some(result))
+        },
+        None => {
+            log::info!("缓存获取为空！")
+        },
+    }
     if let Some(pool) = get_client(redis_uri.clone()) {
         let mut connection = pool.get().unwrap();
         // 查询配置的数据库数量
@@ -344,6 +371,7 @@ pub fn get_all_db_num(redis_uri: String) -> R<HashMap<usize, usize>> {
             .unwrap_or(160); // 默认 16
 
         println!("Total configured databases: {}", total_databases);
+        cache_util::set_cache(url.clone() + "_total_databases", total_databases);
         for i in 0..total_databases {
             result.insert(i, 0);
         }
@@ -360,25 +388,70 @@ pub fn get_all_db_num(redis_uri: String) -> R<HashMap<usize, usize>> {
     }
 }
 
+fn get_db_num(client: Client, url: String) -> R<usize> {
+    match client.get_connection_with_timeout(Duration::from_secs(2)) {
+        Ok(mut con) => {
+            // 查询配置的数据库数量
+            let config:Result<Vec<String>, redis::RedisError>  = redis::cmd("CONFIG")
+            .arg("GET")
+            .arg("databases")
+            .query(&mut con);
+            log::info!("执行查询完成！");
+            match config {
+                Ok(config) => {
+                    let total_databases: Option<usize> = config
+                    .get(1) // 第一个值是 "databases"，第二个值是数量
+                    .and_then(|s| s.parse().ok()); // 默认 16
+                    match total_databases {
+                        Some(tootal) => {
+                            cache_util::set_cache(url.clone() + "_total_databases", tootal);
+                            return R::data(Some(tootal));
+                        },
+                        None => {
+                            log::error!("新链接查询databases失败！");
+                            return R::fail("新链接查询databases失败！".to_owned());
+                        },
+                    }
+                },
+                Err(e) => {
+                    log::error!("查询超时：{}", e);
+                    return R::fail("查询超时！".to_owned());
+                },
+            }
+        },
+        Err(e) => {
+            log::error!("链接redis失败！{}", e);
+            return R::fail("链接redis超时！".to_owned());
+        },
+    }
+}
+
 pub fn get_client(redis_uri: String) -> Option<Pool<Client>> {
     log::info!("redis地址：{}", redis_uri);
+    let url = get_sourc_url(redis_uri.clone());
     if let Some(pool) = get_client_cache(redis_uri.clone()) {
         Some(pool)
     } else {
         let client = redis::Client::open(redis_uri);
         match client {
             Ok(client) => {
-                let pool = r2d2::Pool::builder()
-                    .connection_timeout(Duration::from_secs(1))
-                    .build(client);
-                match pool {
-                    Ok(pool) => {
-                        return Some(pool);
+                let num = get_db_num(client.clone(), url);
+                if num.get_is_success() {
+                    let pool = r2d2::Pool::builder()
+                        .connection_timeout(Duration::from_secs(1))
+                        .build(client);
+                    match pool {
+                        Ok(pool) => {
+                            return Some(pool);
+                        }
+                        Err(e) => {
+                            log::error!("打开redis链接失败！{}", e);
+                            return None;
+                        }
                     }
-                    Err(e) => {
-                        log::error!("打开redis链接失败！{}", e);
-                        return None;
-                    }
+                } else {
+                    log::error!("链接redis失败！");
+                    return None;
                 }
             }
             Err(e) => {
@@ -404,59 +477,36 @@ pub fn get_client_cache(redis_uri: String) -> Option<Pool<Client>> {
             return opool;
         },
         None => {
-            log::info!("缓存中获取为空！获取新链接！");
+            log::info!("缓存中获取pool为空！获取新链接！");
         },
     };
 
     let client = redis::Client::open(redis_uri);
     match client {
-        Ok(mut client) => {
-
-            // 查询配置的数据库数量
-            let config:Result<Vec<String>, redis::RedisError>  = redis::cmd("CONFIG")
-                .arg("GET")
-                .arg("databases")
-                .query(&mut client);
-            match config {
-                Ok(config) => {
-                    let total_databases: Option<usize> = config
-                    .get(1) // 第一个值是 "databases"，第二个值是数量
-                    .and_then(|s| s.parse().ok()); // 默认 16
-                    match total_databases {
-                        Some(tootal) => {
-                            cache_util::set_cache(url.clone() + "_total_databases", tootal);
-                        },
-                        None => {
-                            log::error!("链接redis失败！");
-                            return None;
-                        },
-                    }
-                },
-                Err(e) => {
-                    log::error!("链接redis失败：{}", e);
-                    return None;
-                },
-            }
-
-
-
-
-            let pool = r2d2::Pool::builder()
+        Ok(client) => {
+            log::info!("拿到client");
+            let num = get_db_num(client.clone(), url.clone());
+            if num.get_is_success() {
+                let pool = r2d2::Pool::builder()
                 .connection_timeout(Duration::from_secs(1))
                 .build(client);
-            match pool {
-                Ok(pool) => {
-                    cache_util::set_cache(url, pool.clone());
-                    return Some(pool);
+                match pool {
+                    Ok(pool) => {
+                        cache_util::set_cache(url, pool.clone());
+                        return Some(pool);
+                    }
+                    Err(e) => {
+                        log::error!("pool链接redis失败！{}", e);
+                        return None;
+                    }
                 }
-                Err(e) => {
-                    log::error!("链接redis失败！{}", e);
-                    return None;
-                }
-            }
+            } else {
+                log::error!("pool链接redis失败：");
+                return None; 
+            }    
         }
         Err(e) => {
-            log::error!("链接redis失败：{}", e);
+            log::error!("pool链接redis失败：{}", e);
             return None;
         }
     }
@@ -469,46 +519,25 @@ pub fn reset_client_cache(redis_uri: String) -> R<String> {
     let url = get_sourc_url(redis_uri.clone());
     let client = redis::Client::open(redis_uri);
     match client {
-        Ok(mut client) => {
-            // 查询配置的数据库数量
-            let config:Result<Vec<String>, redis::RedisError>  = redis::cmd("CONFIG")
-                .arg("GET")
-                .arg("databases")
-                .query(&mut client);
-            match config {
-                Ok(config) => {
-                    let total_databases: Option<usize> = config
-                    .get(1) // 第一个值是 "databases"，第二个值是数量
-                    .and_then(|s| s.parse().ok()); // 默认 16
-                    match total_databases {
-                        Some(tootal) => {
-                            cache_util::set_cache(url.clone() + "_total_databases", tootal);
-                        },
-                        None => {
-                            log::error!("链接redis失败！");
-                            return R::fail("链接redis失败！".to_owned());
-                        },
+        Ok(client) => {
+            let num = get_db_num(client.clone(), url.clone());
+            if num.get_is_success() {
+                let pool = r2d2::Pool::builder()
+                    .connection_timeout(Duration::from_secs(1))
+                    .build(client);
+                match pool {
+                    Ok(pool) => {
+                        cache_util::set_cache(url, pool);
+                        return R::success();
                     }
-                },
-                Err(e) => {
-                    log::error!("链接redis失败：{}", e);
-                    return R::fail("链接redis失败！".to_owned());
-                },
-            }
-
-
-            let pool = r2d2::Pool::builder()
-                .connection_timeout(Duration::from_secs(1))
-                .build(client);
-            match pool {
-                Ok(pool) => {
-                    cache_util::set_cache(url, pool);
-                    return R::success();
+                    Err(e) => {
+                        log::error!("链接redis失败：{}", e);
+                        return R::fail("链接redis失败！".to_owned());
+                    }
                 }
-                Err(e) => {
-                    log::error!("链接redis失败：{}", e);
-                    return R::fail("链接redis失败！".to_owned());
-                }
+            } else {
+                log::error!("链接redis失败！");
+                return R::fail("链接redis失败！".to_owned());
             }
         }
         Err(e) => {
