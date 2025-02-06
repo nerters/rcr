@@ -71,7 +71,7 @@ pub fn get_key_from_cache(
     None
 }
 
-pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
+pub fn get_keys(redis_uri: String, key: String, db: String, cache: bool) -> R<Vec<Key>> {
     let mut hasher = Md5::new();
     hasher.input_str(&redis_uri);
     let md5 = hasher.result_str();
@@ -88,14 +88,17 @@ pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
     if !r_key.is_empty() && !r_key.ends_with(":") {
         return R::success();
     }
-    if let Some(val) = get_key_from_cache(
-        base_key.clone(),
-        r_key.clone(),
-        redis_uri.clone(),
-        db.clone(),
-    ) {
-        return R::data(Some(val));
-    };
+    if cache {
+        if let Some(val) = get_key_from_cache(
+            base_key.clone(),
+            r_key.clone(),
+            redis_uri.clone(),
+            db.clone(),
+        ) {
+            return R::data(Some(val));
+        };
+    }
+
 
     if let Some(pool) = get_client(redis_uri.to_string()) {
         let mut connection = pool.get().unwrap();
@@ -324,17 +327,20 @@ fn group_key_to_cache(keys: Vec<String>, base_key: String) {
 }
 
 //获取使用的db
-fn get_use_db_num(redis_uri: String) -> HashMap<usize, usize> {
+fn get_use_db_num(redis_uri: String, cache: bool) -> HashMap<usize, usize> {
     let url = get_sourc_url(redis_uri.clone());
-    let info: Option<HashMap<usize, usize>> = cache_util::get_cache(&(url.clone() + "_use_db_num"));
-    match info {
-        Some(info) => {
-            return info;
-        },
-        None => {
-            log::info!("缓存中没有获取到！");
-        },
+    if cache {
+        let info: Option<HashMap<usize, usize>> = cache_util::get_cache(&(url.clone() + "_use_db_num"));
+        match info {
+            Some(info) => {
+                return info;
+            },
+            None => {
+                log::info!("缓存中没有获取到！");
+            },
+        }
     }
+
     if let Some(pool) = get_client(redis_uri.clone()) {
         let mut connection = pool.get().unwrap();
         // 手动执行 INFO 命令
@@ -382,7 +388,7 @@ pub fn get_all_db_num(redis_uri: String, cache: bool) -> R<HashMap<usize, usize>
                 for i in 0..total_databases {
                     result.insert(i, 0);
                 }
-                let use_map = get_use_db_num(redis_uri);
+                let use_map = get_use_db_num(redis_uri, cache);
                 for (k, v) in use_map {
                     result.insert(k, v);
                 }
@@ -412,7 +418,7 @@ pub fn get_all_db_num(redis_uri: String, cache: bool) -> R<HashMap<usize, usize>
         for i in 0..total_databases {
             result.insert(i, 0);
         }
-        let use_map = get_use_db_num(redis_uri);
+        let use_map = get_use_db_num(redis_uri, cache);
         for (k, v) in use_map {
             result.insert(k, v);
         }

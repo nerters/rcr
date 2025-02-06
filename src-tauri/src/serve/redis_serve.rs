@@ -6,8 +6,8 @@ use crate::utils::{self, redis_util::{pubsub as other_pubsub, reset_client_cache
 //let redis_uri_v1 = "redis://:123123@192.168.4.49:6379/0";
 //let redis_uri_v2 = "redis://:9R9SVEnjbS1r9SFHa8@192.168.2.151:6111/10";
 #[tauri::command]
-pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
-    utils::redis_util::get_keys(redis_uri, key, db)
+pub fn get_keys(redis_uri: String, key: String, db: String, cache: bool) -> R<Vec<Key>> {
+    utils::redis_util::get_keys(redis_uri, key, db, cache)
 }
 
 #[tauri::command]

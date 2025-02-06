@@ -17,7 +17,7 @@
         <v-expansion-panel v-for="(link, i) in cache_link">
           <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="position-sticky top-0 pa-3 mt-2" style="z-index: 20; background-color:silver">
             <v-row no-gutters>
-              <v-col class="d-flex justify-start" cols="8">
+              <v-col class="d-flex justify-start align-center" cols="8">
                 {{ link.name }}
               </v-col>
               <v-col
@@ -28,9 +28,24 @@
                   <span
                     v-if="expanded"
                     key="0"
-                    class="text-overline"
+                    class="text-overline d-flex align-center"
                   >
-                    {{  }}
+                  {{ link.total }}
+                  <v-menu open-on-hover >
+                    <template v-slot:activator="{ props }">
+                      <v-btn @click.stop="" icon="mdi-dots-vertical" variant="text" v-bind="props"></v-btn>
+                    </template>
+                    <v-list density="compact">
+                      <v-list-item key="0" @click="refreshTree(link)">
+                        <v-icon icon="mdi-sync" />
+                        刷新
+                      </v-list-item>
+                      <v-list-item key="0" @click="refreshTree(link)">
+                        <v-icon  icon="mdi-clipboard-text" />
+                        监听
+                      </v-list-item>
+                    </v-list>
+                  </v-menu>
                   </span>
                   <div key="1" style="margin-top: -4px;">
                     <v-icon @click.stop="upLinkFun(link)" icon="mdi-cog" />
@@ -77,48 +92,72 @@
       <v-divider :thickness="8" vertical class="resizer" :style="{ 'padding-left': drawerWidth + 'px' }" @mousedown="onMouseDown"></v-divider>
   
       <!-- Main Content -->
-      <v-main class="d-flex justify-center" style="padding-left: 0px;">
+      <v-main class="d-flex justify-center" style="padding-left: 0px; height: 100vh;">
 
         <div v-if="details" style="width: 100%; height: 100%;">
-          <v-row no-gutters justify="space-between">
-            <v-col cols="12" sm="1" class="d-flex align-center">
-              key:
-            </v-col>
+          <v-container style="height: 60px; margin-top: -30px;">
 
-            <v-col cols="12" sm="7">
-              <!-- <text>{{ key }}</text> -->
-              <v-text-field 
-                :append-inner-icon="key == sourceKey ? '' : 'mdi-check'"
-                variant="underlined" 
-                :clear-icon="key == sourceKey ? '' : 'mdi-close-circle'"
-                clearable
-                v-model:model-value="key"
-                @click:clear="clearKey"
-                @click:append-inner="upKey"
-              ></v-text-field>
-            </v-col>
+            <v-row no-gutters >
+              <v-col cols="12" sm="1" class="d-flex align-center">
+                key:
+              </v-col>
+
+              <v-col cols="12" sm="7">
+                <!-- <text>{{ key }}</text> -->
+                <v-text-field 
+                  :append-inner-icon="key == sourceKey ? '' : 'mdi-check'"
+                  variant="underlined" 
+                  :clear-icon="key == sourceKey ? '' : 'mdi-close-circle'"
+                  clearable
+                  v-model:model-value="key"
+                  @click:clear="clearKey"
+                  @click:append-inner="upKey"
+                ></v-text-field>
+              </v-col>
 
             
+              <v-col cols="12" sm="1" class="d-flex align-center">
+                ttl:
+              </v-col>
 
-            <v-col cols="12" sm="1" class="d-flex align-center">
-              ttl:
-            </v-col>
+              <v-col cols="12" sm="3">
+                <v-text-field 
+                  :append-inner-icon="ttl == sourceTtl ? '' :'mdi-check'"
+                  variant="underlined" 
+                  :clear-icon="ttl == sourceTtl ? '' : 'mdi-close-circle'"
+                  clearable
+                  v-model:model-value="ttl"
+                  @click:clear="clearTTL"
+                  @click:append-inner="upTTL"
+                ></v-text-field>
+              </v-col>
 
-            <v-col cols="12" sm="3">
-              <v-text-field 
-                :append-inner-icon="ttl == sourceTtl ? '' :'mdi-check'"
-                variant="underlined" 
-                :clear-icon="ttl == sourceTtl ? '' : 'mdi-close-circle'"
-                clearable
-                v-model:model-value="ttl"
-                @click:clear="clearTTL"
-                @click:append-inner="upTTL"
-              ></v-text-field>
-            </v-col>
+            </v-row>
+          </v-container>
 
-          </v-row>
+    
+          <!-- 编辑区域 -->
+          <v-container fluid v-if="sourceTtl != 0" class="d-flex" style="height: calc(100vh - 30px);">
+            <div
+              contenteditable
+              class="editable-text flex-grow-1"
+              @input="updateText"
+              style="border: 1px solid #ccc; padding: 10px; height: 100; width: 100%; overflow-y: auto;"
+            >
+              {{ content }}
+            </div>
 
-          <text v-if="sourceTtl != 0">{{ content }}</text>
+            <v-fab
+              
+              icon="mdi-near-me"
+              location="right center"
+              absolute
+              
+            ></v-fab>
+          </v-container>
+
+          
+
           <div v-else style="font-size: 48px; color: red; width: 100%;" class="d-flex align-center justify-center"> key以过期 </div>
         </div>
 
@@ -305,6 +344,7 @@ import setPromiseInterval from 'set-promise-interval';
 		public level!: number;
 		public children!: Array<Tree>;
 		public title!: String;
+    public total!: number;
   }
 
   const drawerWidth = ref(230);
@@ -415,7 +455,8 @@ import setPromiseInterval from 'set-promise-interval';
           host: "",
           port: "",
           level: 0,
-          children: []
+          children: [],
+          total: 0,
         }];
     }
     console.log(cache_link.value);
@@ -485,10 +526,17 @@ import setPromiseInterval from 'set-promise-interval';
     }
   }
 
+  function updateText(event: any) {
+    content.value = event.target.innerText;
+  }
+
   //树下拉
   async function fetchUsers (item: any) {
-    console.log(item)
     if (item.level == 0) {
+      console.log(item.children)
+      if (item.children.length > 0) {
+        return;
+      }
       let data:any = await invoke("get_db_num", { redisUri: item.nname })
       console.log(data)
       let temp:any[] = []
@@ -497,25 +545,28 @@ import setPromiseInterval from 'set-promise-interval';
           //upTreeVer();
           return [];
       }
+      let total = 0;
       for (const [key, value] of Object.entries(data.data)) {
-          temp.push({
-              "leaf":false,
-              "num":value,
-              "name":key + "[ " + value + " ]",
-              "db": key,
-              "nname": key,
-              "redis_uri":item.nname,
-              "children":[],
-              "level": item.level + 1,
-              "json": key,
-          });
+        total += parseInt(value as string);  // 假设 value 是字符串
+        temp.push({
+            "leaf":false,
+            "num":value,
+            "name":key + "[ " + value + " ]",
+            "db": key,
+            "nname": key,
+            "redis_uri":item.nname,
+            "children":[],
+            "level": item.level + 1,
+            "json": key,
+        });
       }
       console.log("------temp--------")
       console.log(temp)
       item.children = temp;
+      item.total = total;
       return temp;
     } else if (item.level == 1) {
-      let data:any = await invoke("get_keys", { key: "*", redisUri: item.redis_uri, db: item.db })
+      let data:any = await invoke("get_keys", { key: "*", redisUri: item.redis_uri, db: item.db, cache: true })
       redisUri.value = item.redis_uri;
       db.value = item.db;
       if (data.is_success) {
@@ -534,7 +585,7 @@ import setPromiseInterval from 'set-promise-interval';
           return [];
       }
     } else if(item.level > 1) {
-      let data:any = await invoke("get_keys", { key: item.nname + "*", redisUri: item.redis_uri, db: item.db })
+      let data:any = await invoke("get_keys", { key: item.nname + "*", redisUri: item.redis_uri, db: item.db, cache: true })
       redisUri.value = item.redis_uri;
       db.value = item.db;
       if (data.is_success) {
@@ -604,6 +655,51 @@ import setPromiseInterval from 'set-promise-interval';
     }
   }
 
+  async function refreshTree(item: any) {
+    console.log(item.children)
+    let dbData:any = await invoke("get_db_num", { redisUri: item.nname })
+    console.log("--------dbData-------------");
+    console.log(dbData)
+    let temp:any[] = []
+    if (!dbData.is_success) {
+        await message("链接redis失败！", { title: '提示', kind: 'error' })
+        //upTreeVer();
+        return [];
+    }
+    let total = 0;
+    for (const [key, value] of Object.entries(dbData.data)) {
+      total += parseInt(value as string);  // 假设 value 是字符串
+      let data:any = await invoke("get_keys", { key: "*", redisUri: item.nname, db: key, cache: false })
+      let dbInfo: any = {
+          "leaf":false,
+          "num":value,
+          "name":key + "[ " + value + " ]",
+          "db": key,
+          "nname": key,
+          "redis_uri":item.nname,
+          "children":[],
+          "level": item.level + 1,
+          "json": key,
+      };
+      if (data.is_success) {
+          if (data.data && data.data.length > 0) {
+            for (let i in data.data) {
+              data.data[i].level = item.level + 2;
+              data.data[i].json = {nname: data.data[i].nname, redis_uri: data.data[i].redis_uri, db: data.data[i].db}
+            }
+            dbInfo.children = data.data;
+          }
+      }
+      temp.push(dbInfo);
+    }
+
+    item.children = temp;
+    item.total = total;
+
+    console.log("------item--------")
+    console.log(item)
+    
+  }
 
   watch(overlay, (n, _) => {
     if (!n) {
@@ -628,6 +724,7 @@ function addLinkSubmit() {
           level: 0,
           children: [],
           title: fromData.linkName,
+          total: 0,
         }
     )
     console.log(cache_link.value)
@@ -742,7 +839,7 @@ async function changeTree(redisUrl: String, db: String, sourceKey: String, key: 
     
     // if (last_parent) {
     //   last_parent.children.length = 0;
-    //   let data:any = await invoke("get_keys", { key: last_parent_key, redisUri: redisUrl, db: db })
+    //   let data:any = await invoke("get_keys", { key: last_parent_key, redisUri: redisUrl, db: db, cache: true })
     //   if (data.is_success) {
     //       if (data.data && data.data.length > 0) {
     //         for (let i in data.data) {
