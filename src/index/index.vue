@@ -118,8 +118,8 @@
 
           </v-row>
 
-          <text>{{ content }}</text>
-
+          <text v-if="sourceTtl != 0">{{ content }}</text>
+          <div v-else style="font-size: 48px; color: red; width: 100%;" class="d-flex align-center justify-center"> key以过期 </div>
         </div>
 
        
@@ -707,6 +707,7 @@ async function changeTree(redisUrl: String, db: String, sourceKey: String, key: 
   }
   let data:any = await invoke("get_db_num", { redisUri: redisUrl })
   if (data.is_success) {
+    console.log("修改db 原始数据")
     item.name = db + "[ " + data.data[parseInt(db.toString())] + " ]";
   }
 
@@ -791,6 +792,15 @@ const handleNodeClick = async (nodes: unknown) => {
       if (result.code == -12) {
         await message(result.msg, { title: 'key不存在', kind: 'error' });
         changeTree(clickedNode.redis_uri, db.value, clickedNode.nname, clickedNode.nname);
+        details.value = false;
+        content.value = "";
+        sourceContent.value = "";
+        ttl.value = -1;
+        sourceTtl.value = -1;
+        key.value = "";
+        sourceKey.value = "";
+        redisUri.value = "";
+        db.value = "";
       }
     } else {
       content.value = result.data[0];

@@ -230,6 +230,7 @@ pub fn get_value(redis_uri: String, key: String, db: String) -> R<(String, i64)>
                     log::info!("查询key： {} 存在！", r_key);
                 } else {
                     log::info!("查询key： {} 不存在！", r_key);
+                    cache_remove_by_key(&redis_uri, &key, &db);
                     return R::fail_code(-12, &format!("查询key： {} 不存在！", r_key));
                 }
          
@@ -370,26 +371,29 @@ fn get_use_db_num(redis_uri: String) -> HashMap<usize, usize> {
 }
 
 //获取全部的db
-pub fn get_all_db_num(redis_uri: String) -> R<HashMap<usize, usize>> {
+pub fn get_all_db_num(redis_uri: String, cache: bool) -> R<HashMap<usize, usize>> {
     let mut result: HashMap<usize, usize> = HashMap::new();
     let url = get_sourc_url(redis_uri.clone());
-    let total:Option<usize> = cache_util::get_cache(&(url.clone() + "_total_databases"));
-    match total {
-        Some(total_databases) => {
-            println!("Total configured databases: {}", total_databases);
-            for i in 0..total_databases {
-                result.insert(i, 0);
-            }
-            let use_map = get_use_db_num(redis_uri);
-            for (k, v) in use_map {
-                result.insert(k, v);
-            }
-            return R::data(Some(result))
-        },
-        None => {
-            log::info!("缓存获取为空！")
-        },
+    if cache {
+        let total:Option<usize> = cache_util::get_cache(&(url.clone() + "_total_databases"));
+        match total {
+            Some(total_databases) => {
+                println!("Total configured databases: {}", total_databases);
+                for i in 0..total_databases {
+                    result.insert(i, 0);
+                }
+                let use_map = get_use_db_num(redis_uri);
+                for (k, v) in use_map {
+                    result.insert(k, v);
+                }
+                return R::data(Some(result))
+            },
+            None => {
+                log::info!("缓存获取为空！")
+            },
+        }
     }
+
     if let Some(pool) = get_client(redis_uri.clone()) {
         let mut connection = pool.get().unwrap();
         // 查询配置的数据库数量
@@ -609,36 +613,7 @@ pub fn remove_by_key(redis_uri: String, db: String, key: String) -> R<String> {
         }
         match connection.del(key.clone()) {
             Ok(()) => {
-                let mut hasher = Md5::new();
-                hasher.input_str(&redis_uri);
-                let md5 = hasher.result_str();
-                let base_key = md5.clone();
-                let mut cache_key = String::from("");
-                // 找到最后一个 ':' 的位置
-                if let Some(last_colon_pos) = key.clone().rfind(':') {
-                    // 截取字符串，保留到最后一个 ':' 之前
-                    cache_key = key[..last_colon_pos + 1].to_string();  // 包含最后一个 ':'
-                }
-                let db_key = base_key.clone() + ":" + &db + ":" + &cache_key.clone();
-                let values: Option<HashSet<String>> =
-                cache_util::get_cache(&db_key);
-                match values {
-                    Some(mut values) => {
-                        log::info!(
-                            "查询key：{},",
-                            &(base_key.clone() + ":" + &db + ":" + &cache_key.clone())
-                        );
-                        log::info!("返回值 {}", serde_json::to_string(&values).unwrap());
-                        values.remove(&key.replace(&cache_key, ""));
-                        log::info!("移除后 {}", serde_json::to_string(&values).unwrap());
-                        cache_util::set_cache(db_key, values);
-                    },
-                    None => {
-                        log::error!("清理缓存失败！");
-                        //重置keys
-                    },
-                }
-
+                cache_remove_by_key(&redis_uri, &key, &db);
                 return R::success();
             },
             Err(e) => {
@@ -649,6 +624,39 @@ pub fn remove_by_key(redis_uri: String, db: String, key: String) -> R<String> {
 
     }
     return R::fail(format!("删除key: {} 失败！", key).to_string());
+}
+
+
+fn cache_remove_by_key(redis_uri: &str, key: &str, db: &str) {
+    let mut hasher = Md5::new();
+    hasher.input_str(redis_uri);
+    let md5 = hasher.result_str();
+    let base_key = md5.clone();
+    let mut cache_key = String::from("");
+    // 找到最后一个 ':' 的位置
+    if let Some(last_colon_pos) = key.rfind(':') {
+        // 截取字符串，保留到最后一个 ':' 之前
+        cache_key = key[..last_colon_pos + 1].to_string();  // 包含最后一个 ':'
+    }
+    let db_key = base_key.clone() + ":" + db + ":" + &cache_key.clone();
+    let values: Option<HashSet<String>> =
+    cache_util::get_cache(&db_key);
+    match values {
+        Some(mut values) => {
+            log::info!(
+                "查询key：{},",
+                &(base_key.clone() + ":" + db + ":" + &cache_key.clone())
+            );
+            log::info!("返回值 {}", serde_json::to_string(&values).unwrap());
+            values.remove(&key.replace(&cache_key, ""));
+            log::info!("移除后 {}", serde_json::to_string(&values).unwrap());
+            cache_util::set_cache(db_key, values);
+        },
+        None => {
+            log::error!("清理缓存失败！");
+            //重置keys
+        },
+    }
 }
 
 

@@ -18,7 +18,7 @@ pub fn get_value(redis_uri: String, key: String, db: String) -> R<(String, i64)>
 #[tauri::command]
 pub fn get_db_num(redis_uri: String) -> R<HashMap<usize, usize>> {
     log::info!("查询数据库中的db库数量：");
-    utils::redis_util::get_all_db_num(redis_uri)
+    utils::redis_util::get_all_db_num(redis_uri, false)
 }
 
 #[tauri::command]
