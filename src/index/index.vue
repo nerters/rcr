@@ -15,7 +15,7 @@
 
       <v-expansion-panels>
         <v-expansion-panel v-for="(link, i) in cache_link">
-          <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="bg-primary position-sticky top-0 pa-3 mt-2" style="z-index: 20;">
+          <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="position-sticky top-0 pa-3 mt-2" style="z-index: 20; background-color:silver">
             <v-row no-gutters>
               <v-col class="d-flex justify-start" cols="8">
                 {{ link.name }}
@@ -59,11 +59,11 @@
               style="margin-left: -35px; "
             >
               <template v-slot:prepend="{ item, isOpen }">
-                <v-icon v-if="!item.file">
+                <v-icon v-if="item.children">
                   {{ isOpen ? 'mdi-folder-open' : 'mdi-folder' }}
                 </v-icon>
                 <v-icon v-else>
-                  {{ files[item.file] }}
+                  mdi-file-document-outline
                 </v-icon>
               </template>
             </v-treeview>
@@ -77,8 +77,52 @@
       <v-divider :thickness="8" vertical class="resizer" :style="{ 'padding-left': drawerWidth + 'px' }" @mousedown="onMouseDown"></v-divider>
   
       <!-- Main Content -->
-      <v-main class="d-flex align-center justify-center" style="padding-left: 0px;">
-        <text>{{ content }}</text>
+      <v-main class="d-flex justify-center" style="padding-left: 0px;">
+
+        <div v-if="details" style="width: 100%; height: 100%;">
+          <v-row no-gutters justify="space-between">
+            <v-col cols="12" sm="1" class="d-flex align-center">
+              key:
+            </v-col>
+
+            <v-col cols="12" sm="7">
+              <!-- <text>{{ key }}</text> -->
+              <v-text-field 
+                :append-inner-icon="key == sourceKey ? '' : 'mdi-check'"
+                variant="underlined" 
+                :clear-icon="key == sourceKey ? '' : 'mdi-close-circle'"
+                clearable
+                v-model:model-value="key"
+                @click:clear="clearKey"
+                @click:append-inner="upKey"
+              ></v-text-field>
+            </v-col>
+
+            
+
+            <v-col cols="12" sm="1" class="d-flex align-center">
+              ttl:
+            </v-col>
+
+            <v-col cols="12" sm="3">
+              <v-text-field 
+                :append-inner-icon="ttl == sourceTtl ? '' :'mdi-check'"
+                variant="underlined" 
+                :clear-icon="ttl == sourceTtl ? '' : 'mdi-close-circle'"
+                clearable
+                v-model:model-value="ttl"
+                @click:clear="clearTTL"
+                @click:append-inner="upTTL"
+              ></v-text-field>
+            </v-col>
+
+          </v-row>
+
+          <text>{{ content }}</text>
+
+        </div>
+
+       
       </v-main>
     </v-layout>
 
@@ -247,15 +291,46 @@ import { invoke } from '@tauri-apps/api/core';
 import { message, ask } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, readTextFile, create, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import setPromiseInterval from 'set-promise-interval';
+
+  class Tree {
+    public id!: number;
+		public name!: String;
+		public nname!: String;
+		public leaf!: boolean;
+		public listenRedis!: boolean;
+		public password!: String;
+		public host!: String;
+		public port!: String;
+		public level!: number;
+		public children!: Array<Tree>;
+		public title!: String;
+  }
 
   const drawerWidth = ref(230);
   
   const cacheFileName = "redis_links.json";
-  const cache_link:Ref<Array<any>> = ref([]);
-  const initiallyOpen = ref(['public'])
+  const cache_link:Ref<Array<Tree>> = ref([]);
+  const initiallyOpen = ref(['public']);
+  const redisUri = ref("");
+  const db = ref("");
 
   const active = ref([]);
+  //选中数节点值
+  const itemInfo = ref();
+  //key
+  const key = ref("");
+  const sourceKey = ref("");
+  //值
   const content = ref("");
+  const sourceContent = ref("");
+  //剩余存活时间
+  const ttl = ref(-1);
+  const sourceTtl = ref(-1);
+  //值展示时间 单位秒
+  const showTime = ref(0);
+  //详情页
+  const details = ref(false);
   //遮罩使用
   const overlay = ref(false);
   //表单类型
@@ -330,8 +405,18 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
         }
     } else {
         cache_link.value = [{
-      title: '.git',
-    }];
+          title: '.git',
+          id: 0,
+          name: '.git',
+          nname: '.git',
+          leaf: false,
+          listenRedis: false,
+          password: "",
+          host: "",
+          port: "",
+          level: 0,
+          children: []
+        }];
     }
     console.log(cache_link.value);
     await invoke("pubsub")
@@ -356,8 +441,51 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
       document.addEventListener('mouseup', onMouseUp);
   };
 
+  function clearKey() {
+    key.value = sourceKey.value;
+  }
+
+  async function upKey() {
+    console.log(itemInfo)
+    let asr = await ask('是否要把 ' + sourceKey.value + " 替换为 " + key.value + " ?", {
+      title: '替换key',
+      kind: 'warning',
+    });
+    if (asr) {
+      let res:any = await invoke("reset_key_name", { redisUri: redisUri.value, db: db.value, key: key.value, sourceKey: sourceKey.value });
+      if (res.is_success) {
+        changeTree(itemInfo.value.redis_uri, db.value, sourceKey.value, key.value);
+
+        sourceKey.value = key.value;
+        itemInfo.value.nname = key.value;
+        itemInfo.value.name = key.value;
+        itemInfo.value.json = {nname: itemInfo.value.nname, redis_uri: itemInfo.value.redis_uri, db: itemInfo.value.db};
+        console.log(itemInfo.value);
+      }
+    }
+  }
 
 
+  function clearTTL() {
+    ttl.value = sourceTtl.value;
+  }
+
+  async function upTTL() {
+    let asr = await ask('是否要把存活时间修改为 ' + ttl.value + " ?", {
+      title: '修改存活时间',
+      kind: 'warning',
+    });
+    if (asr) {
+      console.log("修改!");
+      let res:any = await invoke("reset_ttl_by_key", { redisUri: redisUri.value, db: db.value, key: key.value, ttl: ttl.value ? parseInt(ttl.value.toString()) : -1 });
+      console.log(res)
+      if (res.is_success) {
+        sourceTtl.value = ttl.value;
+      }
+    }
+  }
+
+  //树下拉
   async function fetchUsers (item: any) {
     console.log(item)
     if (item.level == 0) {
@@ -388,8 +516,8 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
       return temp;
     } else if (item.level == 1) {
       let data:any = await invoke("get_keys", { key: "*", redisUri: item.redis_uri, db: item.db })
-      console.log("--------------")
-      console.log(data)
+      redisUri.value = item.redis_uri;
+      db.value = item.db;
       if (data.is_success) {
           if (data.data && data.data.length > 0) {
             for (let i in data.data) {
@@ -407,8 +535,8 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
       }
     } else if(item.level > 1) {
       let data:any = await invoke("get_keys", { key: item.nname + "*", redisUri: item.redis_uri, db: item.db })
-      console.log("--------------")
-      console.log(data)
+      redisUri.value = item.redis_uri;
+      db.value = item.db;
       if (data.is_success) {
           if (data.data && data.data.length > 0) {
             for (let i in data.data) {
@@ -489,15 +617,17 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 function addLinkSubmit() {
    cache_link.value.push(
         {
-            id: new Date().getTime(),
-            name: fromData.linkName,
-            nname: "redis://" + ((fromData.password) ? ( ":" + fromData.password + "@") : "") + fromData.host + ":" + fromData.port,
-            leaf: false,
-            listenRedis: fromData.listenRedis,
-            password: fromData.password,
-            host: fromData.host,
-            port: fromData.port,
-            level: 0,
+          id: new Date().getTime(),
+          name: fromData.linkName,
+          nname: "redis://" + ((fromData.password) ? (":" + fromData.password + "@") : "") + fromData.host + ":" + fromData.port,
+          leaf: false,
+          listenRedis: fromData.listenRedis,
+          password: fromData.password,
+          host: fromData.host,
+          port: fromData.port,
+          level: 0,
+          children: [],
+          title: fromData.linkName,
         }
     )
     console.log(cache_link.value)
@@ -513,27 +643,26 @@ function addCancel() {
 
 
 async function upLinkSubmit() {
-
   for (const i in cache_link.value) {
-        if (cache_link.value[i].id == fromDataRef.id) {
-            cache_link.value[i].name = fromDataRef.linkName;
-            cache_link.value[i].nname = "redis://" + ((fromDataRef.password) ? ( ":" + fromDataRef.password + "@") : "") + fromDataRef.host + ":" + fromDataRef.port;
-            cache_link.value[i].leaf = false;
-            cache_link.value[i].listenRedis = fromDataRef.listenRedis;
-            cache_link.value[i].password = fromDataRef.password;
-            cache_link.value[i].host = fromDataRef.host;
-            cache_link.value[i].port = fromDataRef.port;
-            cache_link.value[i].level = 0;
-            if (fromDataRef.listenRedis) {
+      if (cache_link.value[i].id.toString() == fromDataRef.id) {
+          cache_link.value[i].name = fromDataRef.linkName;
+          cache_link.value[i].nname = "redis://" + ((fromDataRef.password) ? ( ":" + fromDataRef.password + "@") : "") + fromDataRef.host + ":" + fromDataRef.port;
+          cache_link.value[i].leaf = false;
+          cache_link.value[i].listenRedis = fromDataRef.listenRedis;
+          cache_link.value[i].password = fromDataRef.password;
+          cache_link.value[i].host = fromDataRef.host;
+          cache_link.value[i].port = fromDataRef.port;
+          cache_link.value[i].level = 0;
+          if (fromDataRef.listenRedis) {
 
-            }
-            let data:any = await invoke("reset_client", { redisUri: cache_link.value[i].nname });
-            console.log(data);
-            if (!data.is_success) {
-              alert(data.msg)
-              return
-            }
-        }
+          }
+          let data:any = await invoke("reset_client", { redisUri: cache_link.value[i].nname });
+          console.log(data);
+          if (!data.is_success) {
+            alert(data.msg)
+            return
+          }
+      }
     }
     saveCacheFile(JSON.stringify(cache_link.value));
     overlay.value = false;
@@ -545,15 +674,135 @@ function upCancel() {
     clearFormDataRef();
 }
 
+function getItemByNname(list: Array<Tree>, nname: String) {
+  if (!list) {
+    console.log("查找的item的子集为空！")
+    return null;
+  }
+  console.log("待查询list")
+  console.log(list)
+  console.log("待查询nname")
+  console.log(nname)
+  for (let i in list) {
+    if (list[i].nname == nname) {
+      return list[i];
+    }
+  }
+  return null;
+}
 
+async function changeTree(redisUrl: String, db: String, sourceKey: String, key: String) {
+  let split = sourceKey.split(":");
+  let item = getItemByNname(cache_link.value, redisUrl);
+  if (!item) {
+    console.log(redisUrl)
+    alert("修改树失败！");
+    return;
+  }
+  item = getItemByNname(item.children, db);
+  if (!item) {
+    console.log("获取db数据失败！")
+    alert("修改树失败！");
+    return;
+  }
+  let data:any = await invoke("get_db_num", { redisUri: redisUrl })
+  if (data.is_success) {
+    item.name = db + "[ " + data.data[parseInt(db.toString())] + " ]";
+  }
+
+
+  let cache_key = "";
+  let last_parent_key = "";
+  let last_parent = item;
+  for (let i in split) {
+    if (!item) {
+      console.log(redisUrl)
+      alert("修改树失败！");
+      return;
+    }
+    if (parseInt(i) == (split.length - 2)) {
+      last_parent = item;
+      last_parent_key = cache_key + "*";
+    }
+    cache_key += parseInt(i) == (split.length - 1) ? split[i] : (split[i] + ":");
+    item = getItemByNname(item.children, cache_key);
+  }
+
+  console.log(item);
+  if (item?.name == sourceKey) {
+    console.log("找到了！")
+    if (last_parent) {
+      last_parent.children = last_parent.children.filter(item => item.nname !== key);
+    }
+    
+    item.name = key;
+    item.nname = key;
+
+    
+    // if (last_parent) {
+    //   last_parent.children.length = 0;
+    //   let data:any = await invoke("get_keys", { key: last_parent_key, redisUri: redisUrl, db: db })
+    //   if (data.is_success) {
+    //       if (data.data && data.data.length > 0) {
+    //         for (let i in data.data) {
+    //           data.data[i].level = last_parent.level + 1;
+    //           data.data[i].json = {nname: data.data[i].nname, redis_uri: data.data[i].redis_uri, db: data.data[i].db}
+    //         }
+    //         last_parent.children = data.data;
+    //       }
+    //       last_parent.children = [];
+    //   }
+    // } else {
+    //   console.log("寻找到的item的父级失败！")
+    //   alert("修改树失败！");
+    // }
+  } else {
+    console.log("寻找到的item的name与sourceKey对应不上")
+    alert("修改树失败！");
+  }
+}
+
+
+//点击叶子节点
 const handleNodeClick = async (nodes: unknown) => {
   const activatedNodes = Array.isArray(nodes) ? nodes : [nodes];
   const clickedNode = activatedNodes[0];  // Get the first activated node
   // Check if the clicked node is a leaf (no children)
-  if (!clickedNode.children || clickedNode.children.length === 0) {
+
+  console.log(":::::::::::::::::::")
+  console.log(active)
+  itemInfo.value = clickedNode;
+  if (clickedNode == undefined) {
+    details.value = false;
+    content.value = "";
+    sourceContent.value = "";
+    ttl.value = -1;
+    sourceTtl.value = -1;
+    key.value = "";
+    sourceKey.value = "";
+    redisUri.value = "";
+    db.value = "";
+  } else if (!clickedNode.children || clickedNode.children.length === 0) {
+    
+    details.value = true;
     let result:any = await invoke("get_value", { key: clickedNode.nname, redisUri: clickedNode.redis_uri, db: clickedNode.db });
     console.log(result)
-    content.value = result.data;
+    if (!result.is_success) {
+      if (result.code == -12) {
+        await message(result.msg, { title: 'key不存在', kind: 'error' });
+        changeTree(clickedNode.redis_uri, db.value, clickedNode.nname, clickedNode.nname);
+      }
+    } else {
+      content.value = result.data[0];
+      sourceContent.value = result.data[0];
+      ttl.value = result.data[1];
+      sourceTtl.value = result.data[1];
+      key.value = clickedNode.nname;
+      sourceKey.value = clickedNode.nname;
+      redisUri.value = clickedNode.redis_uri;
+      db.value = clickedNode.db;
+    }
+
   }
 };
 
@@ -590,6 +839,16 @@ const handleMouseLeave = () => {
   }
 
 
+  // 每秒更新一次时间戳
+  setPromiseInterval( async () => {
+    showTime.value += 1;
+    if (sourceTtl.value.toString() != "-1" && sourceTtl.value.toString() != "0") {
+      if (sourceTtl.value.toString() == ttl.value.toString()) {
+        ttl.value = parseInt(ttl.value.toString()) - 1;
+      }
+      sourceTtl.value = parseInt(sourceTtl.value.toString()) - 1;
+    }
+  }, 1000);
 
   </script>
   

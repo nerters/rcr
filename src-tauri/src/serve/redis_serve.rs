@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::utils::{self, redis_util::{reset_client_cache, pubsub as other_pubsub, Key}, response::R};
+use crate::utils::{self, redis_util::{pubsub as other_pubsub, reset_client_cache, reset_key_name as other_reset_key_name, reset_ttl_by_key as other_reset_ttl_by_key, Key}, response::R};
 
 //let redis_uri = "redis://192.168.5.126:6379/1";
 //let redis_uri_v1 = "redis://:123123@192.168.4.49:6379/0";
@@ -30,4 +30,15 @@ pub fn reset_client(redis_uri: String) -> R<String> {
 #[tauri::command]
 pub async fn pubsub(redis_uri: String) {
     other_pubsub(redis_uri).await;
+}
+
+
+#[tauri::command]
+pub fn reset_key_name(redis_uri: String, db: String, key: String, source_key: String, handle: tauri::AppHandle,) -> R<String> {
+    other_reset_key_name(redis_uri, db, key, source_key, handle)
+}
+
+#[tauri::command]
+pub fn reset_ttl_by_key(redis_uri: String, db: String, key: String, ttl: i64) -> R<String> {
+    other_reset_ttl_by_key(redis_uri, db, key, ttl)
 }

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct R<T> {
     code: i32,
     msg: String,
-    is_success: bool,
+    is_success: Option<bool>,
     data: Option<T>,
 }
 
@@ -15,7 +15,7 @@ impl<T: Send + Sync> R<T> {
         Self {
             code: 200,
             msg: MSG_SUCCESS.to_owned(),
-            is_success: true,
+            is_success: Some(true),
             data,
         }
     }
@@ -24,7 +24,7 @@ impl<T: Send + Sync> R<T> {
         Self {
             code: 200,
             msg: MSG_SUCCESS.to_owned(),
-            is_success: true,
+            is_success: Some(true),
             data: None,
         }
     }
@@ -33,7 +33,7 @@ impl<T: Send + Sync> R<T> {
         Self {
             code: -1,
             msg,
-            is_success: false,
+            is_success: Some(false),
             data,
         }
     }
@@ -42,7 +42,16 @@ impl<T: Send + Sync> R<T> {
         Self {
             code: -1,
             msg,
-            is_success: false,
+            is_success: Some(false),
+            data: None,
+        }
+    }
+
+    pub fn fail_code(code: i32, msg: &str) -> Self {
+        Self {
+            code: code,
+            msg: msg.to_string(),
+            is_success: Some(false),
             data: None,
         }
     }
@@ -52,6 +61,9 @@ impl<T: Send + Sync> R<T> {
     }
 
     pub fn get_is_success(self: Self) -> bool {
-        self.is_success
+        if let Some(b) = self.is_success {
+            return b;
+        }
+        false
     }
 }

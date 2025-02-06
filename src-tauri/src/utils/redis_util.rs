@@ -3,6 +3,7 @@ use encoding_rs::{UTF_8, WINDOWS_1252};
 use r2d2::Pool;
 use redis::{AsyncCommands, Client, Commands};
 use serde::{Deserialize, Serialize};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use url::Url;
 use std::{
     collections::{HashMap, HashSet},
@@ -156,6 +157,7 @@ pub fn get_keys(redis_uri: String, key: String, db: String) -> R<Vec<Key>> {
         if !r_key.is_empty() {
             base_key = base_key.clone() + ":" + &r_key.clone();
         }
+        log::info!("base_key : {}", base_key);
         let mut keys_t = keys.clone();
         thread::spawn(move || {
             keys_t.sort();
@@ -220,6 +222,24 @@ pub fn get_value(redis_uri: String, key: String, db: String) -> R<(String, i64)>
                 .unwrap();
         }
         log::info!("查询key： {}", r_key);
+
+        let rest: Result<bool, redis::RedisError> = connection.exists(r_key.clone());
+        match rest {
+            Ok(b) => {
+                if b {
+                    log::info!("查询key： {} 存在！", r_key);
+                } else {
+                    log::info!("查询key： {} 不存在！", r_key);
+                    return R::fail_code(-12, &format!("查询key： {} 不存在！", r_key));
+                }
+         
+            },
+            Err(e) => {
+                log::info!("查询移除！ {}", e);
+            },
+        }
+
+
         let rest: Result<Vec<u8>, redis::RedisError> = connection.get(r_key.clone());
         match rest {
             Ok(rest) => {
@@ -232,6 +252,10 @@ pub fn get_value(redis_uri: String, key: String, db: String) -> R<(String, i64)>
                     Err(e) => {
                         return R::fail(format!("解析存活时间！{}", e));
                     },
+                }
+                if rest.is_empty() {
+                    log::info!("返回值： {:?}", rest);
+                    return R::data(Some(("".to_string(), time)));
                 }
                 // 尝试不同的编码
                 let (decoded, _, _) = UTF_8.decode(&rest);
@@ -470,6 +494,163 @@ pub fn get_client(redis_uri: String) -> Option<Pool<Client>> {
         }
     }
 }
+
+
+pub fn reset_key_name(redis_uri: String, db: String, key: String, source_key: String, handle: tauri::AppHandle,) -> R<String> {
+    let res = get_value(redis_uri.clone(), key.clone(), db.clone());
+    log::info!("{:?}", res);
+    if res.get_is_success() {
+        let t = handle.dialog()
+            .message("修改key重复，是否执行")
+            .title("重复")
+        .buttons(MessageDialogButtons::OkCancelCustom("执行".to_owned(), "取消".to_owned()))
+        .blocking_show();
+        if !t {
+            return R::fail(format!("查询 {} 重复！用户选择取消！", source_key).to_string());
+        }
+    }
+
+
+    let res = get_value(redis_uri.clone(), source_key.clone(), db.clone());
+    if res.clone().get_is_success() {
+        if let Some((val, ttl)) = res.get_data() {
+            let res = set_key_val(redis_uri.clone(), db.clone(), key.clone(), val, ttl);
+            if res.clone().get_is_success() {
+                let res = remove_by_key(redis_uri, db, source_key.clone());
+                if !res.get_is_success() {
+                    return R::fail(format!("key： {} 删除失败！", source_key).to_string());
+                }
+            }
+            res
+        } else {
+            return R::fail(format!("key： {} 取出值失败！", source_key).to_string()); 
+        }
+    } else {
+        return R::fail(format!("查询 {} 失败！", source_key).to_string());
+    }
+}
+
+pub fn reset_ttl_by_key(redis_uri: String, db: String, key: String, ttl: i64) -> R<String> {
+    let res = get_value(redis_uri.clone(), key.clone(), db.clone());
+    if res.clone().get_is_success() {
+        if let Some((val, _)) = res.get_data() {
+            let res = set_key_val(redis_uri, db, key, val, ttl);
+            res
+        } else {
+            return R::fail(format!("key： {} 取出值失败！", key).to_string()); 
+        }
+    } else {
+        return R::fail(format!("查询 {} 失败！", key).to_string());
+    }
+}
+
+pub fn set_key_val(redis_uri: String, db: String, key: String, val: String, seconds: i64) -> R<String> {
+    if let Some(pool) = get_client(redis_uri.clone()) {
+        let mut connection = pool.get().unwrap();
+        log::info!("查询库：{}", db);
+        if !db.is_empty() {
+            // 切换到数据库索引为 1
+            redis::cmd("SELECT")
+                .arg(db.clone())
+                .query::<()>(&mut connection)
+                .unwrap();
+        }
+        if seconds < 0 {
+            match connection.set(key.clone(), val) {
+                Ok(()) => {
+                    log::info!("成功！");
+                    let mut hasher = Md5::new();
+                    hasher.input_str(&redis_uri);
+                    let md5 = hasher.result_str();
+                    let mut base_key = md5.clone();
+                    base_key = base_key.clone() + ":" + &db;
+                    group_key_to_cache(vec![key], base_key.clone());
+                    return R::success();
+                },
+                Err(e) => {
+                    log::error!("设置值失败！ {}", e);
+                    return R::fail(format!("key: {} 设置值失败！", key).to_string());
+                },
+            }
+        } else {
+            match connection.set_ex(key.clone(), val, seconds.try_into().unwrap()) {
+                Ok(()) => {
+                    log::info!("成功！");
+                    let mut hasher = Md5::new();
+                    hasher.input_str(&redis_uri);
+                    let md5 = hasher.result_str();
+                    let mut base_key = md5.clone();
+                    base_key = base_key.clone() + ":" + &db;
+                    group_key_to_cache(vec![key], base_key.clone());
+                    return R::success();
+                },
+                Err(e) => {
+                    log::error!("设置值失败！ {}", e);
+                    return R::fail(format!("key: {} 设置值失败！", key).to_string());
+                },
+            }
+        }
+
+
+    }
+    return R::fail("设置值失败！".to_string());
+}
+
+pub fn remove_by_key(redis_uri: String, db: String, key: String) -> R<String> {
+    if let Some(pool) = get_client(redis_uri.clone()) {
+        let mut connection = pool.get().unwrap();
+        log::info!("查询库：{}", db);
+        if !db.is_empty() {
+            // 切换到数据库索引为 1
+            redis::cmd("SELECT")
+                .arg(db.clone())
+                .query::<()>(&mut connection)
+                .unwrap();
+        }
+        match connection.del(key.clone()) {
+            Ok(()) => {
+                let mut hasher = Md5::new();
+                hasher.input_str(&redis_uri);
+                let md5 = hasher.result_str();
+                let base_key = md5.clone();
+                let mut cache_key = String::from("");
+                // 找到最后一个 ':' 的位置
+                if let Some(last_colon_pos) = key.clone().rfind(':') {
+                    // 截取字符串，保留到最后一个 ':' 之前
+                    cache_key = key[..last_colon_pos + 1].to_string();  // 包含最后一个 ':'
+                }
+                let db_key = base_key.clone() + ":" + &db + ":" + &cache_key.clone();
+                let values: Option<HashSet<String>> =
+                cache_util::get_cache(&db_key);
+                match values {
+                    Some(mut values) => {
+                        log::info!(
+                            "查询key：{},",
+                            &(base_key.clone() + ":" + &db + ":" + &cache_key.clone())
+                        );
+                        log::info!("返回值 {}", serde_json::to_string(&values).unwrap());
+                        values.remove(&key.replace(&cache_key, ""));
+                        log::info!("移除后 {}", serde_json::to_string(&values).unwrap());
+                        cache_util::set_cache(db_key, values);
+                    },
+                    None => {
+                        log::error!("清理缓存失败！");
+                        //重置keys
+                    },
+                }
+
+                return R::success();
+            },
+            Err(e) => {
+                log::error!("设置值失败！ {}", e);
+                return R::fail(format!("key: {} 设置值失败！", key).to_string());
+            },
+        }
+
+    }
+    return R::fail(format!("删除key: {} 失败！", key).to_string());
+}
+
 
 //#[once(option = true, time = 600)]
 // #[cached(

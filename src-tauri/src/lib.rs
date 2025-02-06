@@ -115,6 +115,8 @@ pub fn run() {
             serve::redis_serve::get_db_num,
             serve::redis_serve::pubsub,
             serve::redis_serve::reset_client,
+            serve::redis_serve::reset_key_name,
+            serve::redis_serve::reset_ttl_by_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
