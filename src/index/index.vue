@@ -14,7 +14,7 @@
       </div>
 
       <v-expansion-panels>
-        <v-expansion-panel v-for="(link, i) in cache_link">
+        <v-expansion-panel v-for="(link, _i) in cache_link">
           <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="position-sticky top-0 pa-3 mt-2" style="z-index: 20; background-color:silver">
             <v-row no-gutters>
               <v-col class="d-flex justify-start align-center" cols="8">
@@ -810,7 +810,7 @@ async function changeTree(redisUrl: String, db: String, sourceKey: String, key: 
 
 
   let cache_key = "";
-  let last_parent_key = "";
+//  let last_parent_key = "";
   let last_parent = item;
   for (let i in split) {
     if (!item) {
@@ -820,7 +820,7 @@ async function changeTree(redisUrl: String, db: String, sourceKey: String, key: 
     }
     if (parseInt(i) == (split.length - 2)) {
       last_parent = item;
-      last_parent_key = cache_key + "*";
+      //last_parent_key = cache_key + "*";
     }
     cache_key += parseInt(i) == (split.length - 1) ? split[i] : (split[i] + ":");
     item = getItemByNname(item.children, cache_key);
