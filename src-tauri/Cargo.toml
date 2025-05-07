@@ -45,3 +45,6 @@ url = "2.5.4"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 cocoa = "0.26"
+
+[profile.release]
+strip = "debuginfo"

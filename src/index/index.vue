@@ -13,79 +13,80 @@
           </div>
       </div>
 
-      <v-expansion-panels>
-        <v-expansion-panel v-for="(link, _i) in cache_link">
-          <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="position-sticky top-0 pa-3 mt-2" style="z-index: 20; background-color:silver">
-            <v-row no-gutters>
-              <v-col class="d-flex justify-start align-center" cols="8">
-                {{ link.name }}
-              </v-col>
-              <v-col
-                class="text--secondary"
-                cols="4"
+      
+        <v-expansion-panels multiple>
+          <v-expansion-panel v-for="(link, i) in cache_link"  :key="i">
+            <v-expansion-panel-title v-slot="{ expanded }" @click="fetchUsers(link)" class="position-sticky top-0 pa-3 mt-2" style="z-index: 20; background-color:silver">
+              <v-row no-gutters>
+                <v-col class="d-flex justify-start align-center" cols="8">
+                  {{ link.name }}
+                </v-col>
+                <v-col
+                  class="text--secondary"
+                  cols="4"
+                >
+                  <v-fade-transition leave-absolute>
+                    <span
+                      v-if="expanded"
+                      key="0"
+                      class="text-overline d-flex align-center"
+                    >
+                    {{ link.total }}
+                    <v-menu open-on-hover >
+                      <template v-slot:activator="{ props }">
+                        <v-btn @click.stop="" icon="mdi-dots-vertical" variant="text" v-bind="props"></v-btn>
+                      </template>
+                      <v-list density="compact">
+                        <v-list-item key="0" @click="refreshTree(link)">
+                          <v-icon icon="mdi-sync" />
+                          刷新
+                        </v-list-item>
+                        <v-list-item key="0" @click="refreshTree(link)">
+                          <v-icon  icon="mdi-clipboard-text" />
+                          监听
+                        </v-list-item>
+                      </v-list>
+                    </v-menu>
+                    </span>
+                    <div key="1" style="margin-top: -4px;">
+                      <v-icon @click.stop="upLinkFun(link)" icon="mdi-cog" />
+                      <v-icon @click.stop="delLinkFun(link)" icon="mdi-trash-can" />
+                    </div>
+                  
+                
+                  </v-fade-transition>
+                </v-col>
+              </v-row>
+            </v-expansion-panel-title>
+            <v-expansion-panel-text>
+              
+
+              <v-treeview
+                v-model:activated="active"
+                v-model:opened="initiallyOpen"
+                :items="link.children"
+                :load-children="fetchUsers"
+                density="compact"
+                activatable
+                open-on-click
+                item-title="name"
+                item-value="json"
+                @update:activated="handleNodeClick"
+                style="margin-left: -35px; "
               >
-                <v-fade-transition leave-absolute>
-                  <span
-                    v-if="expanded"
-                    key="0"
-                    class="text-overline d-flex align-center"
-                  >
-                  {{ link.total }}
-                  <v-menu open-on-hover >
-                    <template v-slot:activator="{ props }">
-                      <v-btn @click.stop="" icon="mdi-dots-vertical" variant="text" v-bind="props"></v-btn>
-                    </template>
-                    <v-list density="compact">
-                      <v-list-item key="0" @click="refreshTree(link)">
-                        <v-icon icon="mdi-sync" />
-                        刷新
-                      </v-list-item>
-                      <v-list-item key="0" @click="refreshTree(link)">
-                        <v-icon  icon="mdi-clipboard-text" />
-                        监听
-                      </v-list-item>
-                    </v-list>
-                  </v-menu>
-                  </span>
-                  <div key="1" style="margin-top: -4px;">
-                    <v-icon @click.stop="upLinkFun(link)" icon="mdi-cog" />
-                    <v-icon @click.stop="delLinkFun(link)" icon="mdi-trash-can" />
-                  </div>
-                 
-               
-                </v-fade-transition>
-              </v-col>
-            </v-row>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
-            
+                <template v-slot:prepend="{ item, isOpen }">
+                  <v-icon v-if="item.children">
+                    {{ isOpen ? 'mdi-folder-open' : 'mdi-folder' }}
+                  </v-icon>
+                  <v-icon v-else>
+                    mdi-file-document-outline
+                  </v-icon>
+                </template>
+              </v-treeview>
 
-            <v-treeview
-              v-model:activated="active"
-              v-model:opened="initiallyOpen"
-              :items="link.children"
-              :load-children="fetchUsers"
-              density="compact"
-              activatable
-              open-on-click
-              item-title="name"
-              item-value="json"
-              @update:activated="handleNodeClick"
-              style="margin-left: -35px; "
-            >
-              <template v-slot:prepend="{ item, isOpen }">
-                <v-icon v-if="item.children">
-                  {{ isOpen ? 'mdi-folder-open' : 'mdi-folder' }}
-                </v-icon>
-                <v-icon v-else>
-                  mdi-file-document-outline
-                </v-icon>
-              </template>
-            </v-treeview>
-
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
       </v-navigation-drawer>
   
   
@@ -532,10 +533,11 @@ import setPromiseInterval from 'set-promise-interval';
 
   //树下拉
   async function fetchUsers (item: any) {
+    console.log("--------------tree")
     if (item.level == 0) {
       console.log(item.children)
       if (item.children.length > 0) {
-        return;
+        return [];
       }
       let data:any = await invoke("get_db_num", { redisUri: item.nname })
       console.log(data)
@@ -604,6 +606,7 @@ import setPromiseInterval from 'set-promise-interval';
           return [];
       }
     }
+    return [];
   }
 
   function addListFun() {
